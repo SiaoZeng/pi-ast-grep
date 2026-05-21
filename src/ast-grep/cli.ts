@@ -7,7 +7,7 @@ import { SearchTimeoutError } from "./errors.js";
 import { createSgResultFromStdout } from "./json-output.js";
 import { DEFAULT_TIMEOUT_MS } from "./languages.js";
 import { collectProcessOutputWithTimeout } from "./process-timeout.js";
-import type { RunSgOptions, SgResult } from "./types.js";
+import type { RunSgDebugQueryOptions, RunSgOptions, SgDebugQueryResult, SgResult } from "./types.js";
 
 const INSTALL_HINT = [
 	"ast-grep (sg) binary not found.",
@@ -64,9 +64,44 @@ export function buildSgArgs(options: RunSgOptions, includeUpdateAll: boolean): s
 	return args;
 }
 
-async function spawnSg(cliPath: string, args: string[], timeoutMs: number) {
-	const proc = spawn(cliPath, args, { stdio: ["ignore", "pipe", "pipe"] });
+export function buildSgDebugQueryArgs(options: RunSgDebugQueryOptions): string[] {
+	const format = options.format ?? "ast";
+	const args = ["run", "-p", options.pattern, "--lang", options.lang, `--debug-query=${format}`, "--stdin"];
+
+	if (options.selector) {
+		args.push("--selector", options.selector);
+	}
+
+	if (options.strictness) {
+		args.push("--strictness", options.strictness);
+	}
+
+	return args;
+}
+
+async function spawnSg(cliPath: string, args: string[], timeoutMs: number, stdinText?: string) {
+	const proc = spawn(cliPath, args, { stdio: ["pipe", "pipe", "pipe"] });
+	if (stdinText !== undefined) {
+		proc.stdin?.end(stdinText);
+	} else {
+		proc.stdin?.end();
+	}
 	return collectProcessOutputWithTimeout(proc, timeoutMs);
+}
+
+async function resolveCliPath(): Promise<string | null> {
+	let cliPath = getSgCliPath();
+
+	if (!cliPath || !existsSync(cliPath)) {
+		const downloadedPath = await getAstGrepPath();
+		if (downloadedPath && existsSync(downloadedPath)) {
+			cliPath = downloadedPath;
+		} else {
+			return null;
+		}
+	}
+
+	return cliPath;
 }
 
 export async function runSg(options: RunSgOptions, hasRetriedDownload = false): Promise<SgResult> {
@@ -75,20 +110,14 @@ export async function runSg(options: RunSgOptions, hasRetriedDownload = false): 
 	const readOptions = shouldSeparateWritePass ? { ...options, updateAll: false } : options;
 	const args = buildSgArgs(readOptions, !shouldSeparateWritePass);
 
-	let cliPath = getSgCliPath();
-
-	if (!cliPath || !existsSync(cliPath)) {
-		const downloadedPath = await getAstGrepPath();
-		if (downloadedPath && existsSync(downloadedPath)) {
-			cliPath = downloadedPath;
-		} else {
-			return {
-				matches: [],
-				totalMatches: 0,
-				truncated: false,
-				error: INSTALL_HINT,
-			};
-		}
+	const cliPath = await resolveCliPath();
+	if (!cliPath) {
+		return {
+			matches: [],
+			totalMatches: 0,
+			truncated: false,
+			error: INSTALL_HINT,
+		};
 	}
 
 	const timeout = DEFAULT_TIMEOUT_MS;
@@ -166,4 +195,44 @@ export async function runSg(options: RunSgOptions, hasRetriedDownload = false): 
 	return jsonResult;
 }
 
-export { INSTALL_HINT, AUTO_DOWNLOAD_FAILED_HINT };
+export async function runSgDebugQuery(
+	options: RunSgDebugQueryOptions,
+	hasRetriedDownload = false,
+): Promise<SgDebugQueryResult> {
+	const args = buildSgDebugQueryArgs(options);
+	const cliPath = await resolveCliPath();
+	if (!cliPath) {
+		return { output: "", error: INSTALL_HINT };
+	}
+
+	try {
+		const output = await spawnSg(cliPath, args, DEFAULT_TIMEOUT_MS, "");
+		const stdout = output.stdout.trim();
+		const stderr = output.stderr.trim();
+		if (stderr.startsWith("Debug ") && stdout.length === 0) {
+			return { output: stderr };
+		}
+		if (output.exitCode !== 0) {
+			const error = stderr || `ast-grep exited with code ${output.exitCode}`;
+			return { output: stdout, error };
+		}
+		return { output: stdout };
+	} catch (error) {
+		if (error instanceof SearchTimeoutError) {
+			return { output: "", error: error.message };
+		}
+
+		if (isEnoentError(error)) {
+			const downloadedPath = await ensureAstGrepBinary();
+			if (downloadedPath && !hasRetriedDownload) {
+				return runSgDebugQuery(options, true);
+			}
+			return { output: "", error: AUTO_DOWNLOAD_FAILED_HINT };
+		}
+
+		const errorMessage = error instanceof Error ? error.message : String(error);
+		return { output: "", error: `Failed to spawn ast-grep: ${errorMessage}` };
+	}
+}
+
+export { AUTO_DOWNLOAD_FAILED_HINT, INSTALL_HINT };

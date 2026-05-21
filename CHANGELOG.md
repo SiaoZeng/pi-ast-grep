@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `ast_gparse`, a pi-native wrapper around `sg run --debug-query`, for inspecting how ast-grep parses structural query patterns before broader searches.
 - Initial release porting omo's `ast_grep_search` and `ast_grep_replace` tools
   as a pi-coding-agent extension.
 - Auto-resolution of the `sg` binary across `@ast-grep/cli` npm package,

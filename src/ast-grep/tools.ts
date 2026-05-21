@@ -6,12 +6,29 @@ import { Type } from "typebox";
 // specific coding-agent fork (pi-mono vs senpi vs ...).
 const defineTool: typeof DefineToolType = (t) => t;
 
-import { runSg } from "./cli.js";
+import { runSg, runSgDebugQuery } from "./cli.js";
 import { CLI_LANGUAGES } from "./languages.js";
 import { getPatternHint } from "./pattern-hints.js";
-import { renderReplaceCall, renderReplaceResult, renderSearchCall, renderSearchResult } from "./render.js";
+import {
+	renderParseCall,
+	renderParseResult,
+	renderReplaceCall,
+	renderReplaceResult,
+	renderSearchCall,
+	renderSearchResult,
+} from "./render.js";
 import { formatReplaceResult, formatSearchResult } from "./result-formatter.js";
-import type { CliLanguage, RunSgOptions, SgResult, SgTruncationReason } from "./types.js";
+import {
+	type CliLanguage,
+	DEBUG_QUERY_FORMATS,
+	type DebugQueryFormat,
+	type RunSgDebugQueryOptions,
+	type RunSgOptions,
+	SG_STRICTNESS_LEVELS,
+	type SgResult,
+	type SgStrictness,
+	type SgTruncationReason,
+} from "./types.js";
 
 function isCliLanguage(value: unknown): value is CliLanguage {
 	return typeof value === "string" && CLI_LANGUAGES.some((language) => language === value);
@@ -54,6 +71,18 @@ const ReplaceParams = Type.Object({
 	dryRun: Type.Optional(Type.Boolean({ description: "Preview changes without applying (default: true)" })),
 });
 
+const ParseParams = Type.Object({
+	pattern: Type.String({ description: "AST pattern query to inspect" }),
+	lang: StringEnum(CLI_LANGUAGES, { description: "Target language" }),
+	format: Type.Optional(
+		StringEnum(DEBUG_QUERY_FORMATS, { description: "Debug output format: pattern, ast, cst, or sexp" }),
+	),
+	selector: Type.Optional(Type.String({ description: "Optional AST kind selector for sub-pattern extraction" })),
+	strictness: Type.Optional(
+		StringEnum(SG_STRICTNESS_LEVELS, { description: "Optional ast-grep strictness for query parsing" }),
+	),
+});
+
 export interface AstGrepSearchDetails {
 	pattern: string;
 	lang: CliLanguage;
@@ -78,6 +107,16 @@ export interface AstGrepReplaceDetails {
 	totalMatches: number;
 	truncated: boolean;
 	truncatedReason?: SgTruncationReason;
+	error?: string;
+}
+
+export interface AstGrepParseDetails {
+	pattern: string;
+	lang: CliLanguage;
+	format: DebugQueryFormat;
+	selector?: string;
+	strictness?: SgStrictness;
+	output: string;
 	error?: string;
 }
 
@@ -194,4 +233,50 @@ export const ast_grep_replace = defineTool({
 	},
 	renderCall: renderReplaceCall,
 	renderResult: renderReplaceResult,
+});
+
+export const ast_gparse = defineTool({
+	name: "ast_gparse",
+	label: "AST Grep Parse",
+	description:
+		"Inspect how ast-grep parses a query pattern using the CLI debug-query surface. " +
+		"Useful when a structural search pattern is not matching as expected.",
+	promptSnippet: "Inspect an ast-grep query pattern as pattern/AST/CST/S-expression before searching.",
+	promptGuidelines: [
+		"Use ast_gparse before broad ast_grep_search calls when a structural pattern is uncertain.",
+		"Prefer format=ast for named-node debugging, format=cst for punctuation-sensitive debugging, and format=sexp for compact tree inspection.",
+	],
+	parameters: ParseParams,
+	async execute(_toolCallId, params) {
+		if (!isCliLanguage(params.lang)) {
+			return invalidLanguageResult(params.lang);
+		}
+
+		const format = params.format ?? "ast";
+		const options: RunSgDebugQueryOptions = {
+			pattern: params.pattern,
+			lang: params.lang,
+			format,
+		};
+		if (params.selector !== undefined) options.selector = params.selector;
+		if (params.strictness !== undefined) options.strictness = params.strictness;
+		const result = await runSgDebugQuery(options);
+
+		const details: AstGrepParseDetails = {
+			pattern: params.pattern,
+			lang: params.lang,
+			format,
+			output: result.output,
+		};
+		if (params.selector !== undefined) details.selector = params.selector;
+		if (params.strictness !== undefined) details.strictness = params.strictness;
+		if (result.error !== undefined) details.error = result.error;
+
+		return {
+			content: [{ type: "text", text: result.error ? `Error: ${result.error}` : result.output }],
+			details,
+		};
+	},
+	renderCall: renderParseCall,
+	renderResult: renderParseResult,
 });

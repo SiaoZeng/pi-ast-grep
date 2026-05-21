@@ -1,14 +1,13 @@
 import { describe, expect, it } from "vitest";
 
-import { buildSgArgs } from "../src/ast-grep/cli.js";
-import type { RunSgOptions } from "../src/ast-grep/types.js";
+import { buildSgArgs, buildSgDebugQueryArgs } from "../src/ast-grep/cli.js";
+import type { RunSgDebugQueryOptions, RunSgOptions } from "../src/ast-grep/types.js";
 
 const pattern = "console.log($MSG)";
 const rewrite = "logger.info($MSG)";
 
 describe("buildSgArgs", () => {
 	it("#given search options #when building args #then returns compact JSON search argv", () => {
-		// TODO: export buildSgArgs from src/ast-grep/cli.ts so this red test can run.
 		// given
 		const options: RunSgOptions = { pattern, lang: "typescript", paths: ["src"] };
 
@@ -20,7 +19,6 @@ describe("buildSgArgs", () => {
 	});
 
 	it("#given context option #when building args #then inserts context before paths", () => {
-		// TODO: export buildSgArgs from src/ast-grep/cli.ts so this red test can run.
 		// given
 		const options: RunSgOptions = { pattern, lang: "typescript", context: 3, paths: ["src"] };
 
@@ -32,7 +30,6 @@ describe("buildSgArgs", () => {
 	});
 
 	it("#given rewrite dry pass #when building args #then includes rewrite without update all", () => {
-		// TODO: export buildSgArgs from src/ast-grep/cli.ts so this red test can run.
 		// given
 		const options: RunSgOptions = { pattern, rewrite, lang: "typescript", paths: ["src"] };
 
@@ -45,7 +42,6 @@ describe("buildSgArgs", () => {
 	});
 
 	it("#given rewrite update pass #when building args #then includes update all", () => {
-		// TODO: export buildSgArgs from src/ast-grep/cli.ts so this red test can run.
 		// given
 		const options: RunSgOptions = { pattern, rewrite, lang: "typescript", paths: ["src"] };
 
@@ -68,7 +64,6 @@ describe("buildSgArgs", () => {
 	});
 
 	it("#given globs #when building args #then repeats globs flags", () => {
-		// TODO: export buildSgArgs from src/ast-grep/cli.ts so this red test can run.
 		// given
 		const options: RunSgOptions = {
 			pattern,
@@ -97,7 +92,6 @@ describe("buildSgArgs", () => {
 	});
 
 	it("#given undefined paths #when building args #then defaults to current directory", () => {
-		// TODO: export buildSgArgs from src/ast-grep/cli.ts so this red test can run.
 		// given
 		const options: RunSgOptions = { pattern, lang: "typescript" };
 
@@ -109,7 +103,6 @@ describe("buildSgArgs", () => {
 	});
 
 	it("#given empty paths #when building args #then defaults to current directory", () => {
-		// TODO: export buildSgArgs from src/ast-grep/cli.ts so this red test can run.
 		// given
 		const options: RunSgOptions = { pattern, lang: "typescript", paths: [] };
 
@@ -121,7 +114,6 @@ describe("buildSgArgs", () => {
 	});
 
 	it("#given write pass options #when building args #then omits compact JSON flag", () => {
-		// TODO: once buildSgArgs is exported, make write-pass argv omit --json=compact directly.
 		// given
 		const options: RunSgOptions = {
 			pattern,
@@ -137,5 +129,50 @@ describe("buildSgArgs", () => {
 		// then
 		expect(args).toEqual(["run", "-p", pattern, "--lang", "typescript", "-r", rewrite, "src"]);
 		expect(args).not.toContain("--json=compact");
+	});
+});
+
+describe("buildSgDebugQueryArgs", () => {
+	it("#given debug query options #when building args #then uses stdin and explicit format", () => {
+		// given
+		const options: RunSgDebugQueryOptions = {
+			pattern: "function $NAME($$$) { $$$ }",
+			lang: "typescript",
+			format: "cst",
+			selector: "function_declaration",
+			strictness: "ast",
+		};
+
+		// when
+		const args = buildSgDebugQueryArgs(options);
+
+		// then
+		expect(args).toEqual([
+			"run",
+			"-p",
+			"function $NAME($$$) { $$$ }",
+			"--lang",
+			"typescript",
+			"--debug-query=cst",
+			"--stdin",
+			"--selector",
+			"function_declaration",
+			"--strictness",
+			"ast",
+		]);
+	});
+
+	it("#given missing format #when building args #then defaults to ast", () => {
+		// given
+		const options: RunSgDebugQueryOptions = {
+			pattern: "console.log($MSG)",
+			lang: "typescript",
+		};
+
+		// when
+		const args = buildSgDebugQueryArgs(options);
+
+		// then
+		expect(args).toEqual(["run", "-p", "console.log($MSG)", "--lang", "typescript", "--debug-query=ast", "--stdin"]);
 	});
 });

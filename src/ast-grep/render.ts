@@ -1,8 +1,8 @@
 import type { AgentToolResult, Theme, ToolRenderResultOptions } from "@earendil-works/pi-coding-agent";
 import { type Component, Text, truncateToWidth } from "@earendil-works/pi-tui";
 
-import type { AstGrepReplaceDetails, AstGrepSearchDetails } from "./tools.js";
-import type { CliLanguage, CliMatch, SgTruncationReason } from "./types.js";
+import type { AstGrepParseDetails, AstGrepReplaceDetails, AstGrepSearchDetails } from "./tools.js";
+import type { CliLanguage, CliMatch, DebugQueryFormat, SgStrictness, SgTruncationReason } from "./types.js";
 
 interface RenderContext {
 	lastComponent: Component | undefined;
@@ -26,6 +26,14 @@ interface AstGrepReplaceCallArgs {
 	dryRun?: boolean;
 }
 
+interface AstGrepParseCallArgs {
+	pattern?: string;
+	lang?: string;
+	format?: string;
+	selector?: string;
+	strictness?: string;
+}
+
 interface MatchGroup {
 	file: string;
 	matches: CliMatch[];
@@ -36,6 +44,8 @@ const MAX_COLLAPSED_FILES = 3;
 const MAX_EXPANDED_MATCHES = 15;
 const MAX_PATH_LENGTH = 42;
 const MAX_SNIPPET_LENGTH = 160;
+const MAX_COLLAPSED_PARSE_LINES = 4;
+const MAX_EXPANDED_PARSE_LINES = 60;
 
 function getTextContent<TDetails>(result: AgentToolResult<TDetails>): string {
 	return result.content.find((content) => content.type === "text")?.text ?? "";
@@ -83,6 +93,21 @@ function readStringArray(value: unknown, key: string): string[] | undefined {
 
 function isCliLanguage(value: unknown): value is CliLanguage {
 	return typeof value === "string";
+}
+
+function isDebugQueryFormat(value: unknown): value is DebugQueryFormat {
+	return value === "pattern" || value === "ast" || value === "cst" || value === "sexp";
+}
+
+function isStrictness(value: unknown): value is SgStrictness {
+	return (
+		value === "cst" ||
+		value === "smart" ||
+		value === "ast" ||
+		value === "relaxed" ||
+		value === "signature" ||
+		value === "template"
+	);
 }
 
 function isTruncationReason(value: unknown): value is SgTruncationReason {
@@ -157,6 +182,25 @@ function getReplaceCallArgs(args: unknown): AstGrepReplaceCallArgs | undefined {
 	return result;
 }
 
+function getParseCallArgs(args: unknown): AstGrepParseCallArgs | undefined {
+	if (!isRecord(args)) {
+		return undefined;
+	}
+
+	const result: AstGrepParseCallArgs = {};
+	const pattern = readString(args, "pattern");
+	const lang = readString(args, "lang");
+	const format = readString(args, "format");
+	const selector = readString(args, "selector");
+	const strictness = readString(args, "strictness");
+	if (pattern !== undefined) result.pattern = pattern;
+	if (lang !== undefined) result.lang = lang;
+	if (format !== undefined) result.format = format;
+	if (selector !== undefined) result.selector = selector;
+	if (strictness !== undefined) result.strictness = strictness;
+	return result;
+}
+
 function isSearchDetails(value: unknown): value is AstGrepSearchDetails {
 	if (!isRecord(value)) {
 		return false;
@@ -198,6 +242,25 @@ function isReplaceDetails(value: unknown): value is AstGrepReplaceDetails {
 		typeof value["truncated"] === "boolean" &&
 		(truncatedReason === undefined || isTruncationReason(truncatedReason)) &&
 		(error === undefined || typeof error === "string")
+	);
+}
+
+function isParseDetails(value: unknown): value is AstGrepParseDetails {
+	if (!isRecord(value)) {
+		return false;
+	}
+
+	const error = value["error"];
+	const selector = value["selector"];
+	const strictness = value["strictness"];
+	return (
+		typeof value["pattern"] === "string" &&
+		isCliLanguage(value["lang"]) &&
+		isDebugQueryFormat(value["format"]) &&
+		typeof value["output"] === "string" &&
+		(error === undefined || typeof error === "string") &&
+		(selector === undefined || typeof selector === "string") &&
+		(strictness === undefined || isStrictness(strictness))
 	);
 }
 
@@ -269,6 +332,23 @@ function formatReplaceBadges(args: AstGrepReplaceCallArgs | undefined, theme: Th
 	badges += formatGlobBadge(args?.globs, theme);
 	if (args?.dryRun !== false) {
 		badges += theme.fg("warning", " [dry-run]");
+	}
+	return badges;
+}
+
+function formatParseBadges(args: AstGrepParseCallArgs | undefined, theme: Theme): string {
+	let badges = "";
+	if (args?.lang) {
+		badges += theme.fg("dim", ` [${args.lang}]`);
+	}
+	if (args?.format) {
+		badges += theme.fg("dim", ` [${args.format}]`);
+	}
+	if (args?.selector) {
+		badges += theme.fg("dim", ` [selector ${args.selector}]`);
+	}
+	if (args?.strictness) {
+		badges += theme.fg("dim", ` [strictness ${args.strictness}]`);
 	}
 	return badges;
 }
@@ -411,6 +491,24 @@ function formatFallbackResult<TDetails>(result: AgentToolResult<TDetails>, theme
 	return output.length > 0 ? theme.fg("toolOutput", output) : theme.fg("dim", "No output");
 }
 
+function formatCollapsedParseOutput(output: string, theme: Theme): string {
+	const lines = output.split("\n").filter((line) => line.length > 0);
+	const preview = lines.slice(0, MAX_COLLAPSED_PARSE_LINES).map((line) => theme.fg("toolOutput", line));
+	if (lines.length > MAX_COLLAPSED_PARSE_LINES) {
+		preview.push(theme.fg("dim", `… ${lines.length - MAX_COLLAPSED_PARSE_LINES} more lines`));
+	}
+	return preview.length > 0 ? `\n${preview.join("\n")}` : "";
+}
+
+function formatExpandedParseOutput(output: string, theme: Theme): string {
+	const lines = output.split("\n");
+	const preview = lines.slice(0, MAX_EXPANDED_PARSE_LINES).map((line) => theme.fg("toolOutput", line));
+	if (lines.length > MAX_EXPANDED_PARSE_LINES) {
+		preview.push(theme.fg("dim", `… ${lines.length - MAX_EXPANDED_PARSE_LINES} more lines`));
+	}
+	return preview.length > 0 ? `\n\n${preview.join("\n")}` : "";
+}
+
 function formatSearchResultText(
 	result: AgentToolResult<unknown>,
 	options: ToolRenderResultOptions,
@@ -472,6 +570,36 @@ function formatReplaceResultText(
 	return `${summary}${formatTruncationBanner(details, theme)}${formatExpandedMatches(details.matches, details.totalMatches, theme)}`;
 }
 
+function formatParseResultText(
+	result: AgentToolResult<unknown>,
+	options: ToolRenderResultOptions,
+	theme: Theme,
+	isError: boolean | undefined,
+): string {
+	const details = isParseDetails(result.details) ? result.details : undefined;
+	if (!details) {
+		return formatFallbackResult(result, theme, isError);
+	}
+
+	if (details.error) {
+		return theme.fg("error", `Error: ${truncateMessage(details.error)}`);
+	}
+
+	if (details.output.trim().length === 0) {
+		return theme.fg("dim", "No debug output");
+	}
+
+	const lineCount = details.output.split("\n").length;
+	const summary =
+		theme.fg("success", `query ${details.format} ready`) + theme.fg("muted", ` • ${pluralize(lineCount, "line")}`);
+
+	if (!options.expanded) {
+		return `${summary}${formatCollapsedParseOutput(details.output, theme)}`;
+	}
+
+	return `${summary}${formatExpandedParseOutput(details.output, theme)}`;
+}
+
 export function renderSearchCall(args: unknown, theme: Theme, context: RenderContext): Text {
 	const text = reuseText(context);
 	const callArgs = getSearchCallArgs(args);
@@ -522,5 +650,28 @@ export function renderReplaceResult(
 ): Text {
 	const text = reuseText(context);
 	text.setText(formatReplaceResultText(result, options, theme, context.isError));
+	return text;
+}
+
+export function renderParseCall(args: unknown, theme: Theme, context: RenderContext): Text {
+	const text = reuseText(context);
+	const callArgs = getParseCallArgs(args);
+	const pattern = callArgs?.pattern ?? "";
+	text.setText(
+		theme.fg("toolTitle", theme.bold("ast_gparse ")) +
+			theme.fg("accent", `/${pattern}/`) +
+			formatParseBadges(callArgs, theme),
+	);
+	return text;
+}
+
+export function renderParseResult(
+	result: AgentToolResult<unknown>,
+	options: ToolRenderResultOptions,
+	theme: Theme,
+	context: RenderContext,
+): Text {
+	const text = reuseText(context);
+	text.setText(formatParseResultText(result, options, theme, context.isError));
 	return text;
 }

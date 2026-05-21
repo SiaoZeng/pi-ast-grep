@@ -2,6 +2,12 @@ import type { CLI_LANGUAGES } from "./languages.js";
 
 export type CliLanguage = (typeof CLI_LANGUAGES)[number];
 
+export const DEBUG_QUERY_FORMATS = ["pattern", "ast", "cst", "sexp"] as const;
+export type DebugQueryFormat = (typeof DEBUG_QUERY_FORMATS)[number];
+
+export const SG_STRICTNESS_LEVELS = ["cst", "smart", "ast", "relaxed", "signature", "template"] as const;
+export type SgStrictness = (typeof SG_STRICTNESS_LEVELS)[number];
+
 export interface Position {
 	line: number;
 	column: number;
@@ -41,4 +47,17 @@ export interface RunSgOptions {
 	rewrite?: string;
 	context?: number;
 	updateAll?: boolean;
+}
+
+export interface RunSgDebugQueryOptions {
+	pattern: string;
+	lang: CliLanguage;
+	format?: DebugQueryFormat;
+	selector?: string;
+	strictness?: SgStrictness;
+}
+
+export interface SgDebugQueryResult {
+	output: string;
+	error?: string;
 }

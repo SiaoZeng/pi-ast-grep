@@ -69,9 +69,23 @@ cd ~/.pi/agent/extensions/pi-ast-grep && npm install
 pi -e /path/to/pi-ast-grep/src/index.ts
 ```
 
-After installation, restart pi (or run `/reload` inside an interactive session). Both tools register automatically and become callable by the LLM.
+After installation, restart pi (or run `/reload` inside an interactive session). All three tools register automatically and become callable by the LLM.
 
 ## Tools
+
+### `ast_gparse`
+
+Inspect how ast-grep parses a query pattern before searching.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `pattern` | `string` (required) | AST pattern query to inspect. |
+| `lang` | one of `CLI_LANGUAGES` (required) | Target language. |
+| `format` | `"pattern" | "ast" | "cst" | "sexp"` (optional, default `"ast"`) | Debug output format. |
+| `selector` | `string` (optional) | Optional AST kind selector for sub-pattern extraction. |
+| `strictness` | `"cst" | "smart" | "ast" | "relaxed" | "signature" | "template"` (optional) | Optional ast-grep strictness. |
+
+Use this when a structural query is not matching as expected and the model needs to inspect the query tree first. Internally this wraps `sg run --debug-query` and uses `--stdin` so the tool returns only query-debug output, not repository search hits.
 
 ### `ast_grep_search`
 

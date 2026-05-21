@@ -2,8 +2,8 @@ import type { AgentToolResult } from "@earendil-works/pi-coding-agent";
 import { Theme } from "@earendil-works/pi-coding-agent";
 import { describe, expect, it } from "vitest";
 
-import { renderReplaceResult, renderSearchResult } from "../src/ast-grep/render.js";
-import type { AstGrepReplaceDetails, AstGrepSearchDetails } from "../src/ast-grep/tools.js";
+import { renderParseResult, renderReplaceResult, renderSearchResult } from "../src/ast-grep/render.js";
+import type { AstGrepParseDetails, AstGrepReplaceDetails, AstGrepSearchDetails } from "../src/ast-grep/tools.js";
 import { makeCliMatch } from "./helpers/sg-fixtures.js";
 
 const ANSI_PATTERN = /\u001b\[[0-9;]*m/g;
@@ -134,6 +134,21 @@ function makeReplaceDetails(overrides: Partial<AstGrepReplaceDetails> = {}): Ast
 	};
 }
 
+function makeParseDetails(overrides: Partial<AstGrepParseDetails> = {}): AstGrepParseDetails {
+	return {
+		pattern: "function $NAME($$$) { $$$ }",
+		lang: "typescript",
+		format: "ast",
+		output: [
+			"Debug AST:",
+			"program (0,0)-(0,27)",
+			"  function_declaration (0,0)-(0,27)",
+			"    name: identifier (0,9)-(0,14)",
+		].join("\n"),
+		...overrides,
+	};
+}
+
 describe("renderSearchResult", () => {
 	it("#given matches across files #when collapsed #then shows counts and file preview", () => {
 		// given
@@ -236,5 +251,63 @@ describe("renderReplaceResult", () => {
 		expect(output).toContain("2 files");
 		expect(output).toContain("src/logger.ts");
 		expect(output).toContain("src/console.ts");
+	});
+});
+
+describe("renderParseResult", () => {
+	it("#given parse output #when collapsed #then shows summary and preview lines", () => {
+		// given
+		const details = makeParseDetails();
+		const result: AgentToolResult<AstGrepParseDetails> = {
+			content: [{ type: "text", text: "" }],
+			details,
+		};
+
+		// when
+		const output = renderText(
+			renderParseResult(result, { expanded: false, isPartial: false }, testTheme, { lastComponent: undefined }),
+		);
+
+		// then
+		expect(output).toContain("query ast ready");
+		expect(output).toContain("4 lines");
+		expect(output).toContain("Debug AST:");
+		expect(output).toContain("function_declaration");
+	});
+
+	it("#given parse output #when expanded #then renders the full debug output", () => {
+		// given
+		const details = makeParseDetails();
+		const result: AgentToolResult<AstGrepParseDetails> = {
+			content: [{ type: "text", text: "" }],
+			details,
+		};
+
+		// when
+		const output = renderText(
+			renderParseResult(result, { expanded: true, isPartial: false }, testTheme, { lastComponent: undefined }),
+		);
+
+		// then
+		expect(output).toContain("query ast ready");
+		expect(output).toContain("program (0,0)-(0,27)");
+		expect(output).toContain("name: identifier");
+	});
+
+	it("#given parse error details #when rendering #then keeps the failure visible", () => {
+		// given
+		const details = makeParseDetails({ output: "", error: "bad pattern" });
+		const result: AgentToolResult<AstGrepParseDetails> = {
+			content: [{ type: "text", text: "" }],
+			details,
+		};
+
+		// when
+		const output = renderText(
+			renderParseResult(result, { expanded: false, isPartial: false }, testTheme, { lastComponent: undefined }),
+		);
+
+		// then
+		expect(output).toContain("Error: bad pattern");
 	});
 });

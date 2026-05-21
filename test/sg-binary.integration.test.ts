@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { findSgCliPathSync } from "../src/ast-grep/binary-path.js";
-import { runSg } from "../src/ast-grep/cli.js";
+import { runSg, runSgDebugQuery } from "../src/ast-grep/cli.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -148,5 +148,26 @@ describe("sg binary integration", () => {
 		expect(result.matches.length).toBeGreaterThanOrEqual(1);
 		const after = readFileSync(TS_FIXTURE, "utf-8");
 		expect(after).toBe(before);
+	}, 15_000);
+
+	it("#given a debug query #when ast_gparse helper runs #then it returns only the query debug output", async () => {
+		// given
+		const path = findSgCliPathSync();
+		if (!path) {
+			expect.fail("sg binary unavailable; integration test cannot run");
+		}
+
+		// when
+		const result = await runSgDebugQuery({
+			pattern: "function $NAME($$$) { $$$ }",
+			lang: "typescript",
+			format: "ast",
+		});
+
+		// then
+		expect(result.error).toBeUndefined();
+		expect(result.output).toContain("Debug AST:");
+		expect(result.output).toContain("function_declaration");
+		expect(result.output).not.toContain("sample.ts:");
 	}, 15_000);
 });

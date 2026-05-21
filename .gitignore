@@ -3,5 +3,6 @@ dist/
 coverage/
 .pi/
 .sisyphus/
+/docs/
 *.log
 .DS_Store

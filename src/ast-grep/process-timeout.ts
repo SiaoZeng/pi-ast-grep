@@ -16,18 +16,23 @@ export interface LineLimitedProcessOutput extends ProcessOutput {
 function attachTimeout(proc: ChildProcess, timeoutMs: number, reject: (error: Error) => void): () => void {
 	let timeoutHandle: NodeJS.Timeout | null = setTimeout(() => {
 		proc.kill("SIGTERM");
-		setTimeout(() => {
-			if (proc.exitCode === null && !proc.killed) {
+		hardKillHandle = setTimeout(() => {
+			if (proc.exitCode === null) {
 				proc.kill("SIGKILL");
 			}
 		}, 1000);
 		reject(new SearchTimeoutError(timeoutMs));
 	}, timeoutMs);
+	let hardKillHandle: NodeJS.Timeout | null = null;
 
 	return () => {
 		if (timeoutHandle !== null) {
 			clearTimeout(timeoutHandle);
 			timeoutHandle = null;
+		}
+		if (hardKillHandle !== null) {
+			clearTimeout(hardKillHandle);
+			hardKillHandle = null;
 		}
 	};
 }

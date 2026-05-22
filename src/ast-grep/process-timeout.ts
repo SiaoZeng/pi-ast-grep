@@ -10,7 +10,7 @@ export interface ProcessOutput {
 }
 
 export interface LineLimitedProcessOutput extends ProcessOutput {
-	stoppedEarly: boolean;
+	totalLineCount: number;
 }
 
 function attachTimeout(proc: ChildProcess, timeoutMs: number, reject: (error: Error) => void): () => void {
@@ -70,7 +70,7 @@ export async function collectProcessOutputByLineLimitWithTimeout(
 ): Promise<LineLimitedProcessOutput> {
 	let stderr = "";
 	const stdoutLines: string[] = [];
-	let stoppedEarly = false;
+	let totalLineCount = 0;
 
 	proc.stdout?.setEncoding("utf-8");
 	proc.stderr?.setEncoding("utf-8");
@@ -81,18 +81,9 @@ export async function collectProcessOutputByLineLimitWithTimeout(
 	const rl = proc.stdout ? createInterface({ input: proc.stdout }) : null;
 	if (rl) {
 		rl.on("line", (line) => {
-			if (lineLimit !== undefined && stdoutLines.length >= lineLimit) {
-				return;
-			}
-			stdoutLines.push(line);
-			if (lineLimit !== undefined && stdoutLines.length >= lineLimit && !stoppedEarly) {
-				stoppedEarly = true;
-				proc.kill("SIGTERM");
-				setTimeout(() => {
-					if (proc.exitCode === null && !proc.killed) {
-						proc.kill("SIGKILL");
-					}
-				}, 1000);
+			totalLineCount++;
+			if (lineLimit === undefined || stdoutLines.length < lineLimit) {
+				stdoutLines.push(line);
 			}
 		});
 	}
@@ -113,5 +104,5 @@ export async function collectProcessOutputByLineLimitWithTimeout(
 		});
 	});
 
-	return { stdout: stdoutLines.join("\n"), stderr, exitCode, stoppedEarly };
+	return { stdout: stdoutLines.join("\n"), stderr, exitCode, totalLineCount };
 }

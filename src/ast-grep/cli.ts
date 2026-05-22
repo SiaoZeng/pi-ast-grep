@@ -185,12 +185,17 @@ function normalizeSgErrorResult(error: string): SgResult {
 	};
 }
 
-function createSgResultFromMode(stdout: string, resultMode: "matches" | "files", maxResults?: number): SgResult {
+function createSgResultFromMode(
+	stdout: string,
+	resultMode: "matches" | "files",
+	maxResults?: number,
+	totalMatchesOverride?: number,
+): SgResult {
 	if (resultMode === "files") {
-		return createSgFileListResultFromStdout(stdout, maxResults);
+		return createSgFileListResultFromStdout(stdout, maxResults, totalMatchesOverride);
 	}
 	if (maxResults !== undefined && maxResults > 0) {
-		return createSgResultFromStreamStdout(stdout, maxResults);
+		return createSgResultFromStreamStdout(stdout, maxResults, totalMatchesOverride);
 	}
 	return createSgResultFromStdout(stdout);
 }
@@ -261,7 +266,7 @@ export async function runSg(options: RunSgOptions, hasRetriedDownload = false): 
 	let stdout: string;
 	let stderr: string;
 	let exitCode: number;
-	let stoppedEarly = false;
+	let totalLineCountOverride: number | undefined;
 
 	try {
 		const output =
@@ -271,7 +276,8 @@ export async function runSg(options: RunSgOptions, hasRetriedDownload = false): 
 		stdout = output.stdout;
 		stderr = output.stderr;
 		exitCode = output.exitCode;
-		stoppedEarly = "stoppedEarly" in output && output.stoppedEarly === true;
+		totalLineCountOverride =
+			"totalLineCount" in output && typeof output.totalLineCount === "number" ? output.totalLineCount : undefined;
 	} catch (error) {
 		if (error instanceof SearchTimeoutError) {
 			return {
@@ -315,11 +321,12 @@ export async function runSg(options: RunSgOptions, hasRetriedDownload = false): 
 		return { matches: [], totalMatches: 0, truncated: false, resultMode: options.resultMode ?? "matches" };
 	}
 
-	const jsonResult = createSgResultFromMode(stdout, readOptions.resultMode ?? "matches", readOptions.maxResults);
-	if (stoppedEarly) {
-		jsonResult.truncated = true;
-		jsonResult.truncatedReason = "max_matches";
-	}
+	const jsonResult = createSgResultFromMode(
+		stdout,
+		readOptions.resultMode ?? "matches",
+		readOptions.maxResults,
+		totalLineCountOverride,
+	);
 
 	if (shouldSeparateWritePass && jsonResult.matches.length > 0) {
 		const writeArgs = buildSgArgs(options, false, "compact");
@@ -477,18 +484,20 @@ export async function runSgScan(options: RunSgScanOptions, hasRetriedDownload = 
 					);
 		const stdout = output.stdout.trim();
 		const stderr = output.stderr.trim();
-		const stoppedEarly = "stoppedEarly" in output && output.stoppedEarly === true;
+		const totalLineCountOverride =
+			"totalLineCount" in output && typeof output.totalLineCount === "number" ? output.totalLineCount : undefined;
 		if (output.exitCode !== 0 && stdout.length === 0) {
 			if (stderr.includes("No files found")) {
 				return { matches: [], totalMatches: 0, truncated: false, resultMode: options.resultMode ?? "matches" };
 			}
 			return normalizeSgErrorResult(stderr || `ast-grep exited with code ${output.exitCode}`);
 		}
-		const result = createSgResultFromMode(stdout, options.resultMode ?? "matches", options.maxResults);
-		if (stoppedEarly) {
-			result.truncated = true;
-			result.truncatedReason = "max_matches";
-		}
+		const result = createSgResultFromMode(
+			stdout,
+			options.resultMode ?? "matches",
+			options.maxResults,
+			totalLineCountOverride,
+		);
 		if (output.exitCode !== 0 && result.error === undefined) {
 			result.error = stderr || `ast-grep exited with code ${output.exitCode}`;
 		}

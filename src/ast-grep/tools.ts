@@ -7,7 +7,7 @@ import { Type } from "typebox";
 const defineTool: typeof DefineToolType = (t) => t;
 
 import { runSg, runSgDebugQuery, runSgScan, runSgTestPattern, runSgTestRule } from "./cli.js";
-import { CLI_LANGUAGES } from "./languages.js";
+import { CLI_LANGUAGES, detectCliLanguageFromPath } from "./languages.js";
 import { getPatternHint } from "./pattern-hints.js";
 import {
 	renderParseCall,
@@ -55,11 +55,20 @@ function invalidLanguageResult(language: unknown): {
 	};
 }
 
+function inferCliLanguageFromPaths(paths: string[] | undefined): CliLanguage | null {
+	if (!paths || paths.length !== 1) {
+		return null;
+	}
+	return detectCliLanguageFromPath(paths[0] ?? "");
+}
+
 const SearchParams = Type.Object({
 	pattern: Type.String({
 		description: "AST pattern with meta-variables ($VAR, $$$). Must be a complete AST node.",
 	}),
-	lang: StringEnum(CLI_LANGUAGES, { description: "Target language" }),
+	lang: Type.Optional(
+		StringEnum(CLI_LANGUAGES, { description: "Target language; auto-detected for single-file paths when omitted" }),
+	),
 	paths: Type.Optional(
 		Type.Array(Type.String(), {
 			description: "Paths to search (default: current working directory)",
@@ -78,7 +87,9 @@ const SearchParams = Type.Object({
 const ReplaceParams = Type.Object({
 	pattern: Type.String({ description: "AST pattern to match" }),
 	rewrite: Type.String({ description: "Replacement pattern (can use $VAR from pattern)" }),
-	lang: StringEnum(CLI_LANGUAGES, { description: "Target language" }),
+	lang: Type.Optional(
+		StringEnum(CLI_LANGUAGES, { description: "Target language; auto-detected for single-file paths when omitted" }),
+	),
 	paths: Type.Optional(Type.Array(Type.String(), { description: "Paths to search" })),
 	globs: Type.Optional(Type.Array(Type.String(), { description: "Include/exclude globs" })),
 	dryRun: Type.Optional(Type.Boolean({ description: "Preview changes without applying (default: true)" })),
@@ -208,14 +219,24 @@ export const ast_grep_search = defineTool({
 	],
 	parameters: SearchParams,
 	async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
-		if (!isCliLanguage(params.lang)) {
-			return invalidLanguageResult(params.lang);
+		const paths = params.paths && params.paths.length > 0 ? params.paths : [ctx.cwd];
+		const inferredLang = inferCliLanguageFromPaths(paths);
+		const lang = params.lang ?? inferredLang;
+		if (!isCliLanguage(lang)) {
+			return {
+				content: [
+					{
+						type: "text",
+						text: "Error: lang is required unless exactly one scannable file path allows safe auto-detection",
+					},
+				],
+				details: undefined,
+			};
 		}
 
-		const paths = params.paths && params.paths.length > 0 ? params.paths : [ctx.cwd];
 		const options: RunSgOptions = {
 			pattern: params.pattern,
-			lang: params.lang,
+			lang,
 			paths,
 		};
 		if (params.globs !== undefined) options.globs = params.globs;
@@ -226,14 +247,12 @@ export const ast_grep_search = defineTool({
 
 		const text = formatSearchResult(result);
 		const hint =
-			result.matches.length === 0 && !result.error
-				? (getPatternHint(params.pattern, params.lang) ?? undefined)
-				: undefined;
+			result.matches.length === 0 && !result.error ? (getPatternHint(params.pattern, lang) ?? undefined) : undefined;
 		const finalText = hint ? `${text}\n\n${hint}` : text;
 
 		const details: AstGrepSearchDetails = {
 			pattern: params.pattern,
-			lang: params.lang,
+			lang,
 			paths,
 			resultMode: result.resultMode ?? params.resultMode ?? "matches",
 			matches: result.matches,
@@ -271,16 +290,26 @@ export const ast_grep_replace = defineTool({
 	parameters: ReplaceParams,
 	executionMode: "sequential",
 	async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
-		if (!isCliLanguage(params.lang)) {
-			return invalidLanguageResult(params.lang);
+		const paths = params.paths && params.paths.length > 0 ? params.paths : [ctx.cwd];
+		const inferredLang = inferCliLanguageFromPaths(paths);
+		const lang = params.lang ?? inferredLang;
+		if (!isCliLanguage(lang)) {
+			return {
+				content: [
+					{
+						type: "text",
+						text: "Error: lang is required unless exactly one scannable file path allows safe auto-detection",
+					},
+				],
+				details: undefined,
+			};
 		}
 
-		const paths = params.paths && params.paths.length > 0 ? params.paths : [ctx.cwd];
 		const dryRun = params.dryRun !== false;
 		const options: RunSgOptions = {
 			pattern: params.pattern,
 			rewrite: params.rewrite,
-			lang: params.lang,
+			lang,
 			paths,
 			updateAll: !dryRun,
 		};
@@ -292,7 +321,7 @@ export const ast_grep_replace = defineTool({
 		const details: AstGrepReplaceDetails = {
 			pattern: params.pattern,
 			rewrite: params.rewrite,
-			lang: params.lang,
+			lang,
 			paths,
 			dryRun,
 			matches: result.matches,

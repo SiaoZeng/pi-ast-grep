@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- safe auto language detection for `ast_grep_search` and `ast_grep_replace` when exactly one file path makes the language unambiguous.
 - `ast_grep_scan` now supports inline rules, rule-file execution, and `sgconfig.yml`-driven project rule discovery.
 - configurable ast-grep binary path override via `PI_AST_GREP_PATH` (and `AST_GREP_BIN` alias), with explicit error reporting for invalid configured paths.
 - diff-style replace previews when ast-grep JSON provides replacement data.

@@ -136,6 +136,24 @@ describe("sg binary integration", () => {
 		}
 	}, 15_000);
 
+	it("#given a single file path without lang #when ast_grep_search runs #then it auto-detects the language", async () => {
+		// given
+		const path = findSgCliPathSync();
+		if (!path) {
+			expect.fail("sg binary unavailable; integration test cannot run");
+		}
+
+		// when
+		const result = await runSg({
+			pattern: "console.log($MSG)",
+			paths: [TS_FIXTURE],
+		});
+
+		// then
+		expect(result.error).toBeUndefined();
+		expect(result.matches.length).toBeGreaterThanOrEqual(1);
+	}, 15_000);
+
 	it("#given a no-match pattern #when ast_grep_search runs #then it returns empty matches without error", async () => {
 		// given
 		const path = findSgCliPathSync();
@@ -154,6 +172,30 @@ describe("sg binary integration", () => {
 		expect(result.error).toBeUndefined();
 		expect(result.matches).toHaveLength(0);
 		expect(result.totalMatches).toBe(0);
+	}, 15_000);
+
+	it("#given a dry-run replace without lang #when ast_grep_replace runs #then it auto-detects the language and does not mutate the file", async () => {
+		// given
+		const path = findSgCliPathSync();
+		if (!path) {
+			expect.fail("sg binary unavailable; integration test cannot run");
+		}
+		const { readFileSync } = await import("node:fs");
+		const before = readFileSync(TS_FIXTURE, "utf-8");
+
+		// when
+		const result = await runSg({
+			pattern: "console.log($MSG)",
+			rewrite: "logger.info($MSG)",
+			paths: [TS_FIXTURE],
+			updateAll: false,
+		});
+
+		// then
+		expect(result.error).toBeUndefined();
+		expect(result.matches.length).toBeGreaterThanOrEqual(1);
+		const after = readFileSync(TS_FIXTURE, "utf-8");
+		expect(after).toBe(before);
 	}, 15_000);
 
 	it("#given a dry-run replace #when ast_grep_replace runs #then it returns matches but does not mutate the file", async () => {

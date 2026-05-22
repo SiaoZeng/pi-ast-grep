@@ -55,7 +55,7 @@ export interface SgResult {
 
 export interface RunSgOptions {
 	pattern: string;
-	lang: CliLanguage;
+	lang?: CliLanguage;
 	paths?: string[];
 	globs?: string[];
 	rewrite?: string;

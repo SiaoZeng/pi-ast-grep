@@ -135,7 +135,7 @@ Search code by AST structure across 25 languages.
 | Parameter | Type | Description |
 |-----------|------|-------------|
 | `pattern` | `string` (required) | AST pattern with `$VAR` (single node) or `$$$` (multiple nodes). Must be a complete AST node. |
-| `lang` | one of `CLI_LANGUAGES` (required) | Target language. |
+| `lang` | one of `CLI_LANGUAGES` (optional) | Target language. Auto-detected when exactly one scannable file path has a known extension. |
 | `paths` | `string[]` (optional, default `[ctx.cwd]`) | Roots to search. |
 | `globs` | `string[]` (optional) | Include / exclude globs (prefix `!` to exclude). |
 | `context` | `number` (optional) | Lines of context around each match. |
@@ -150,7 +150,7 @@ AST-aware rewrite. Dry-run by default.
 |-----------|------|-------------|
 | `pattern` | `string` (required) | AST pattern to match. |
 | `rewrite` | `string` (required) | Replacement pattern. May reference `$VAR` captures from `pattern`. |
-| `lang` | one of `CLI_LANGUAGES` (required) | Target language. |
+| `lang` | one of `CLI_LANGUAGES` (optional) | Target language. Auto-detected when exactly one replace target file has a known extension. |
 | `paths` | `string[]` (optional, default `[ctx.cwd]`) | Roots to search. |
 | `globs` | `string[]` (optional) | Include / exclude globs. |
 | `dryRun` | `boolean` (optional, default `true`) | Preview without writing. Pass `dryRun: false` to apply. |

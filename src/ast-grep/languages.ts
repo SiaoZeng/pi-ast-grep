@@ -57,3 +57,16 @@ export const LANG_EXTENSIONS: Record<string, string[]> = {
 	tsx: [".tsx"],
 	yaml: [".yml", ".yaml"],
 };
+
+export function detectCliLanguageFromPath(filePath: string): (typeof CLI_LANGUAGES)[number] | null {
+	const normalized = filePath.toLowerCase();
+	for (const language of CLI_LANGUAGES) {
+		const exts = LANG_EXTENSIONS[language] ?? [];
+		for (const ext of exts) {
+			if (normalized.endsWith(ext)) {
+				return language;
+			}
+		}
+	}
+	return null;
+}

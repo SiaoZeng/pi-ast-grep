@@ -9,9 +9,10 @@ import {
 	createSgResultFromStdout,
 	createSgResultFromStreamStdout,
 } from "./json-output.js";
-import { DEFAULT_TIMEOUT_MS } from "./languages.js";
+import { DEFAULT_TIMEOUT_MS, detectCliLanguageFromPath } from "./languages.js";
 import { collectProcessOutputWithTimeout } from "./process-timeout.js";
 import type {
+	CliLanguage,
 	RunSgDebugQueryOptions,
 	RunSgOptions,
 	RunSgScanOptions,
@@ -51,7 +52,8 @@ export function buildSgArgs(
 	jsonStyle: "compact" | "stream" = "compact",
 ): string[] {
 	const isWritePass = options.updateAll === true && !includeUpdateAll;
-	const args = ["run", "-p", options.pattern, "--lang", options.lang];
+	const lang = options.lang ?? detectCliLanguageFromPath(options.paths?.[0] ?? "") ?? "__MISSING_LANG__";
+	const args = ["run", "-p", options.pattern, "--lang", lang];
 
 	if (!isWritePass) {
 		if (options.resultMode === "files") {
@@ -193,10 +195,29 @@ function resolveInstallOrConfigError(): string {
 	return getConfiguredSgCliPathError() ?? INSTALL_HINT;
 }
 
+function resolveRunLanguage(options: RunSgOptions): CliLanguage | null {
+	if (options.lang) {
+		return options.lang;
+	}
+	if (options.paths && options.paths.length === 1) {
+		return detectCliLanguageFromPath(options.paths[0] ?? "");
+	}
+	return null;
+}
+
 export async function runSg(options: RunSgOptions, hasRetriedDownload = false): Promise<SgResult> {
+	const resolvedLang = resolveRunLanguage(options);
+	if (!resolvedLang) {
+		return normalizeSgErrorResult(
+			"lang is required unless exactly one scannable file path allows safe auto-detection",
+		);
+	}
+
 	const shouldSeparateWritePass = !!(options.rewrite && options.updateAll);
 
-	const readOptions = shouldSeparateWritePass ? { ...options, updateAll: false } : options;
+	const readOptions = shouldSeparateWritePass
+		? { ...options, updateAll: false, lang: resolvedLang }
+		: { ...options, lang: resolvedLang };
 	const shouldUseStream =
 		readOptions.resultMode === "files" || (readOptions.maxResults !== undefined && readOptions.maxResults > 0);
 	const args = buildSgArgs(readOptions, !shouldSeparateWritePass, shouldUseStream ? "stream" : "compact");

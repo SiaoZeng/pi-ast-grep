@@ -16,14 +16,14 @@ describe("ast_grep_search tool definition", () => {
 		expect(tool.description).toContain("$$$");
 	});
 
-	it("#given search parameters #when inspecting schema #then requires pattern and lang only", () => {
+	it("#given search parameters #when inspecting schema #then requires pattern only and keeps lang optional for safe auto-detection", () => {
 		// given
 		const objectSchema = Type.Object({});
 		const parameters = ast_grep_search.parameters;
 
 		// when / then
 		expect(parameters.type).toBe(objectSchema.type);
-		expect(parameters.required).toEqual(["pattern", "lang"]);
+		expect(parameters.required).toEqual(["pattern"]);
 		expect(parameters.properties).toHaveProperty("pattern");
 		expect(parameters.properties).toHaveProperty("lang");
 		expect(parameters.properties).toHaveProperty("paths");
@@ -44,14 +44,14 @@ describe("ast_grep_replace tool definition", () => {
 		expect(tool.executionMode).toBe("sequential");
 	});
 
-	it("#given replace parameters #when inspecting schema #then requires pattern rewrite and lang", () => {
+	it("#given replace parameters #when inspecting schema #then requires pattern and rewrite while keeping lang optional for safe auto-detection", () => {
 		// given
 		const objectSchema = Type.Object({});
 		const parameters = ast_grep_replace.parameters;
 
 		// when / then
 		expect(parameters.type).toBe(objectSchema.type);
-		expect(parameters.required).toEqual(["pattern", "rewrite", "lang"]);
+		expect(parameters.required).toEqual(["pattern", "rewrite"]);
 		expect(parameters.properties).toHaveProperty("pattern");
 		expect(parameters.properties).toHaveProperty("rewrite");
 		expect(parameters.properties).toHaveProperty("lang");

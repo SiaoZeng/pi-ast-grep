@@ -46,6 +46,14 @@ function isEnoentError(err: unknown): boolean {
 	return errorCode === "ENOENT" || message.includes("ENOENT") || message.includes("not found");
 }
 
+function ensureRuleLanguage(rule: string, lang: CliLanguage): string {
+	const hasTopLevelLanguage = /^language\s*:/m.test(rule);
+	if (hasTopLevelLanguage) {
+		return rule;
+	}
+	return `language: ${lang}\n${rule}`;
+}
+
 export function buildSgArgs(
 	options: RunSgOptions,
 	includeUpdateAll: boolean,
@@ -81,7 +89,7 @@ export function buildSgArgs(
 	}
 
 	const paths = options.paths && options.paths.length > 0 ? options.paths : ["."];
-	args.push(...paths);
+	args.push("--", ...paths);
 
 	return args;
 }
@@ -106,7 +114,7 @@ export function buildSgTestPatternArgs(options: RunSgTestPatternOptions): string
 }
 
 export function buildSgTestRuleArgs(options: RunSgTestRuleOptions): string[] {
-	return ["scan", "--inline-rules", options.rule, "--stdin", "--json=compact"];
+	return ["scan", "--inline-rules", ensureRuleLanguage(options.rule, options.lang), "--stdin", "--json=compact"];
 }
 
 export function buildSgScanArgs(options: RunSgScanOptions, jsonStyle: "compact" | "stream" = "compact"): string[] {
@@ -138,7 +146,7 @@ export function buildSgScanArgs(options: RunSgScanOptions, jsonStyle: "compact" 
 		}
 	}
 	const paths = options.paths && options.paths.length > 0 ? options.paths : ["."];
-	args.push(...paths);
+	args.push("--", ...paths);
 	return args;
 }
 

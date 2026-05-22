@@ -264,7 +264,7 @@ describe("sg binary integration", () => {
 		expect(result.matches[0]?.file).toBe("STDIN");
 	}, 15_000);
 
-	it("#given example code and an inline rule #when ast_grep_test rule helper runs #then it returns stdin-backed match results", async () => {
+	it("#given example code and an inline rule without top-level language #when ast_grep_test rule helper runs #then it injects language and returns stdin-backed match results", async () => {
 		// given
 		const path = findSgCliPathSync();
 		if (!path) {
@@ -272,7 +272,6 @@ describe("sg binary integration", () => {
 		}
 		const rule = [
 			"id: find-await-in-loop",
-			"language: typescript",
 			"rule:",
 			"  pattern: await $PROMISE",
 			"  inside:",

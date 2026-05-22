@@ -20,47 +20,38 @@ const rewrite = "logger.info($MSG)";
 
 describe("buildSgArgs", () => {
 	it("#given search options #when building args #then returns compact JSON search argv", () => {
-		// given
 		const options: RunSgOptions = { pattern, lang: "typescript", paths: ["src"] };
-
-		// when
 		const args = buildSgArgs(options, false);
-
-		// then
-		expect(args).toEqual(["run", "-p", pattern, "--lang", "typescript", "--json=compact", "src"]);
+		expect(args).toEqual(["run", "-p", pattern, "--lang", "typescript", "--json=compact", "--", "src"]);
 	});
 
 	it("#given context option #when building args #then inserts context before paths", () => {
-		// given
 		const options: RunSgOptions = { pattern, lang: "typescript", context: 3, paths: ["src"] };
-
-		// when
 		const args = buildSgArgs(options, false);
-
-		// then
-		expect(args).toEqual(["run", "-p", pattern, "--lang", "typescript", "--json=compact", "-C", "3", "src"]);
+		expect(args).toEqual(["run", "-p", pattern, "--lang", "typescript", "--json=compact", "-C", "3", "--", "src"]);
 	});
 
 	it("#given rewrite dry pass #when building args #then includes rewrite without update all", () => {
-		// given
 		const options: RunSgOptions = { pattern, rewrite, lang: "typescript", paths: ["src"] };
-
-		// when
 		const args = buildSgArgs(options, false);
-
-		// then
-		expect(args).toEqual(["run", "-p", pattern, "--lang", "typescript", "--json=compact", "-r", rewrite, "src"]);
+		expect(args).toEqual([
+			"run",
+			"-p",
+			pattern,
+			"--lang",
+			"typescript",
+			"--json=compact",
+			"-r",
+			rewrite,
+			"--",
+			"src",
+		]);
 		expect(args).not.toContain("--update-all");
 	});
 
 	it("#given rewrite update pass #when building args #then includes update all", () => {
-		// given
 		const options: RunSgOptions = { pattern, rewrite, lang: "typescript", paths: ["src"] };
-
-		// when
 		const args = buildSgArgs(options, true);
-
-		// then
 		expect(args).toEqual([
 			"run",
 			"-p",
@@ -71,23 +62,19 @@ describe("buildSgArgs", () => {
 			"-r",
 			rewrite,
 			"--update-all",
+			"--",
 			"src",
 		]);
 	});
 
 	it("#given globs #when building args #then repeats globs flags", () => {
-		// given
 		const options: RunSgOptions = {
 			pattern,
 			lang: "typescript",
 			globs: ["**/*.ts", "!**/*.test.ts"],
 			paths: ["src"],
 		};
-
-		// when
 		const args = buildSgArgs(options, false);
-
-		// then
 		expect(args).toEqual([
 			"run",
 			"-p",
@@ -99,56 +86,38 @@ describe("buildSgArgs", () => {
 			"**/*.ts",
 			"--globs",
 			"!**/*.test.ts",
+			"--",
 			"src",
 		]);
 	});
 
 	it("#given undefined paths #when building args #then defaults to current directory", () => {
-		// given
 		const options: RunSgOptions = { pattern, lang: "typescript" };
-
-		// when
 		const args = buildSgArgs(options, false);
-
-		// then
 		expect(args.at(-1)).toBe(".");
+		expect(args.at(-2)).toBe("--");
 	});
 
 	it("#given empty paths #when building args #then defaults to current directory", () => {
-		// given
 		const options: RunSgOptions = { pattern, lang: "typescript", paths: [] };
-
-		// when
 		const args = buildSgArgs(options, false);
-
-		// then
 		expect(args.at(-1)).toBe(".");
+		expect(args.at(-2)).toBe("--");
 	});
 
 	it("#given files result mode #when building args #then uses files-with-matches", () => {
-		// given
 		const options: RunSgOptions = { pattern, lang: "typescript", resultMode: "files", paths: ["src"] };
-
-		// when
 		const args = buildSgArgs(options, false);
-
-		// then
-		expect(args).toEqual(["run", "-p", pattern, "--lang", "typescript", "--files-with-matches", "src"]);
+		expect(args).toEqual(["run", "-p", pattern, "--lang", "typescript", "--files-with-matches", "--", "src"]);
 	});
 
 	it("#given limited search #when building stream args #then uses json stream mode", () => {
-		// given
 		const options: RunSgOptions = { pattern, lang: "typescript", maxResults: 2, paths: ["src"] };
-
-		// when
 		const args = buildSgArgs(options, false, "stream");
-
-		// then
-		expect(args).toEqual(["run", "-p", pattern, "--lang", "typescript", "--json=stream", "src"]);
+		expect(args).toEqual(["run", "-p", pattern, "--lang", "typescript", "--json=stream", "--", "src"]);
 	});
 
 	it("#given write pass options #when building args #then omits compact JSON flag", () => {
-		// given
 		const options: RunSgOptions = {
 			pattern,
 			rewrite,
@@ -156,19 +125,14 @@ describe("buildSgArgs", () => {
 			paths: ["src"],
 			updateAll: true,
 		};
-
-		// when
 		const args = buildSgArgs(options, false);
-
-		// then
-		expect(args).toEqual(["run", "-p", pattern, "--lang", "typescript", "-r", rewrite, "src"]);
+		expect(args).toEqual(["run", "-p", pattern, "--lang", "typescript", "-r", rewrite, "--", "src"]);
 		expect(args).not.toContain("--json=compact");
 	});
 });
 
 describe("buildSgDebugQueryArgs", () => {
 	it("#given debug query options #when building args #then uses stdin and explicit format", () => {
-		// given
 		const options: RunSgDebugQueryOptions = {
 			pattern: "function $NAME($$$) { $$$ }",
 			lang: "typescript",
@@ -176,11 +140,7 @@ describe("buildSgDebugQueryArgs", () => {
 			selector: "function_declaration",
 			strictness: "ast",
 		};
-
-		// when
 		const args = buildSgDebugQueryArgs(options);
-
-		// then
 		expect(args).toEqual([
 			"run",
 			"-p",
@@ -197,57 +157,47 @@ describe("buildSgDebugQueryArgs", () => {
 	});
 
 	it("#given missing format #when building args #then defaults to ast", () => {
-		// given
 		const options: RunSgDebugQueryOptions = {
 			pattern: "console.log($MSG)",
 			lang: "typescript",
 		};
-
-		// when
 		const args = buildSgDebugQueryArgs(options);
-
-		// then
 		expect(args).toEqual(["run", "-p", "console.log($MSG)", "--lang", "typescript", "--debug-query=ast", "--stdin"]);
 	});
 });
 
 describe("buildSgTestPatternArgs", () => {
 	it("#given test pattern options #when building args #then uses stdin compact-json run mode", () => {
-		// given
 		const options: RunSgTestPatternOptions = {
 			code: 'console.log("hi")',
 			pattern: "console.log($MSG)",
 			lang: "typescript",
 		};
-
-		// when
 		const args = buildSgTestPatternArgs(options);
-
-		// then
 		expect(args).toEqual(["run", "-p", "console.log($MSG)", "--lang", "typescript", "--stdin", "--json=compact"]);
 	});
 });
 
 describe("buildSgTestRuleArgs", () => {
-	it("#given test rule options #when building args #then uses scan inline-rules over stdin", () => {
-		// given
+	it("#given test rule options #when building args #then injects top-level language and uses scan inline-rules over stdin", () => {
 		const options: RunSgTestRuleOptions = {
 			code: 'console.log("hi")',
-			rule: ["id: find-console-log", "language: typescript", "rule:", "  pattern: console.log($MSG)"].join("\n"),
+			rule: ["id: find-console-log", "rule:", "  pattern: console.log($MSG)"].join("\n"),
 			lang: "typescript",
 		};
-
-		// when
 		const args = buildSgTestRuleArgs(options);
-
-		// then
-		expect(args).toEqual(["scan", "--inline-rules", options.rule, "--stdin", "--json=compact"]);
+		expect(args).toEqual([
+			"scan",
+			"--inline-rules",
+			["language: typescript", options.rule].join("\n"),
+			"--stdin",
+			"--json=compact",
+		]);
 	});
 });
 
 describe("buildSgScanArgs", () => {
 	it("#given scan options #when building args #then uses inline-rules compact-json path scanning", () => {
-		// given
 		const options: RunSgScanOptions = {
 			inlineRules: ["id: find-console-log", "language: typescript", "rule:", "  pattern: console.log($MSG)"].join(
 				"\n",
@@ -257,11 +207,7 @@ describe("buildSgScanArgs", () => {
 			context: 2,
 			includeMetadata: true,
 		};
-
-		// when
 		const args = buildSgScanArgs(options);
-
-		// then
 		expect(args).toEqual([
 			"scan",
 			"--inline-rules",
@@ -272,12 +218,12 @@ describe("buildSgScanArgs", () => {
 			"2",
 			"--globs",
 			"**/*.ts",
+			"--",
 			"src",
 		]);
 	});
 
 	it("#given files mode and max results #when building scan args #then uses files-with-matches and max-results", () => {
-		// given
 		const options: RunSgScanOptions = {
 			inlineRules: ["id: find-console-log", "language: typescript", "rule:", "  pattern: console.log($MSG)"].join(
 				"\n",
@@ -286,11 +232,7 @@ describe("buildSgScanArgs", () => {
 			resultMode: "files",
 			maxResults: 3,
 		};
-
-		// when
 		const args = buildSgScanArgs(options);
-
-		// then
 		expect(args).toEqual([
 			"scan",
 			"--inline-rules",
@@ -298,35 +240,26 @@ describe("buildSgScanArgs", () => {
 			"--files-with-matches",
 			"--max-results",
 			"3",
+			"--",
 			"src",
 		]);
 	});
 
 	it("#given rule file source #when building scan args #then uses --rule", () => {
-		// given
 		const options: RunSgScanOptions = {
 			ruleFile: "/tmp/rule.yml",
 			paths: ["src"],
 		};
-
-		// when
 		const args = buildSgScanArgs(options);
-
-		// then
-		expect(args).toEqual(["scan", "--rule", "/tmp/rule.yml", "--json=compact", "src"]);
+		expect(args).toEqual(["scan", "--rule", "/tmp/rule.yml", "--json=compact", "--", "src"]);
 	});
 
 	it("#given config path source #when building scan args #then uses --config", () => {
-		// given
 		const options: RunSgScanOptions = {
 			configPath: "/tmp/sgconfig.yml",
 			paths: ["src"],
 		};
-
-		// when
 		const args = buildSgScanArgs(options);
-
-		// then
-		expect(args).toEqual(["scan", "--config", "/tmp/sgconfig.yml", "--json=compact", "src"]);
+		expect(args).toEqual(["scan", "--config", "/tmp/sgconfig.yml", "--json=compact", "--", "src"]);
 	});
 });

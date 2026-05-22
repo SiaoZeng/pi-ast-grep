@@ -69,9 +69,64 @@ cd ~/.pi/agent/extensions/pi-ast-grep && npm install
 pi -e /path/to/pi-ast-grep/src/index.ts
 ```
 
-After installation, restart pi (or run `/reload` inside an interactive session). Both tools register automatically and become callable by the LLM.
+After installation, restart pi (or run `/reload` inside an interactive session). All five tools register automatically and become callable by the LLM. The package also ships a bundled skill and prompt template for the ast-grep workflow.
+
+## Guidance Layer
+
+The package includes:
+
+- skill: `ast-grep-guidance`
+- prompt template: `/ast-grep-workflow`
+
+Use the skill when the model needs help choosing between parse, test, search, scan, and replace. Use the prompt template when you want to force the workflow explicitly in a session.
 
 ## Tools
+
+### `ast_grep_scan`
+
+Run advanced inline YAML ast-grep rules across repository files.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `inlineRules` | `string` (optional) | Inline YAML ast-grep rule text to execute. |
+| `ruleFile` | `string` (optional) | Path to a single ast-grep rule file. |
+| `configPath` | `string` (optional) | Path to `sgconfig.yml` for project rule discovery. |
+| `paths` | `string[]` (optional, default `[ctx.cwd]`) | Repository paths to scan. |
+| `globs` | `string[]` (optional) | Include / exclude globs. |
+| `context` | `number` (optional) | Lines of context around matches. |
+| `includeMetadata` | `boolean` (optional, default `false`) | Preserve rule metadata when present. |
+| `maxResults` | `number` (optional) | Maximum number of results to return. |
+| `resultMode` | `"matches" | "files"` (optional, default `"matches"`) | Return full matches or only matched files. |
+
+Use this when a structural query needs relational/composite YAML rules and simple `ast_grep_search` patterns are no longer sufficient. Provide exactly one scan source: `inlineRules`, `ruleFile`, or `configPath`.
+
+### `ast_grep_test`
+
+Validate a structural query against explicit example code before running broader repository searches.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `mode` | `"pattern" | "rule"` (required) | Choose simple pattern validation or inline YAML rule validation. |
+| `code` | `string` (required) | Example source code to validate against. |
+| `lang` | one of `CLI_LANGUAGES` (required) | Target language for example code and pattern mode. |
+| `pattern` | `string` (optional, required when `mode="pattern"`) | AST pattern to validate. |
+| `rule` | `string` (optional, required when `mode="rule"`) | Inline YAML ast-grep rule to validate. |
+
+Use this after `ast_gparse` when the model wants to confirm a pattern or rule against a small example before calling repository-wide tools.
+
+### `ast_gparse`
+
+Inspect how ast-grep parses a query pattern before searching.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `pattern` | `string` (required) | AST pattern query to inspect. |
+| `lang` | one of `CLI_LANGUAGES` (required) | Target language. |
+| `format` | `"pattern" | "ast" | "cst" | "sexp"` (optional, default `"ast"`) | Debug output format. |
+| `selector` | `string` (optional) | Optional AST kind selector for sub-pattern extraction. |
+| `strictness` | `"cst" | "smart" | "ast" | "relaxed" | "signature" | "template"` (optional) | Optional ast-grep strictness. |
+
+Use this when a structural query is not matching as expected and the model needs to inspect the query tree first. Internally this wraps `sg run --debug-query` and uses `--stdin` so the tool returns only query-debug output, not repository search hits.
 
 ### `ast_grep_search`
 
@@ -80,10 +135,12 @@ Search code by AST structure across 25 languages.
 | Parameter | Type | Description |
 |-----------|------|-------------|
 | `pattern` | `string` (required) | AST pattern with `$VAR` (single node) or `$$$` (multiple nodes). Must be a complete AST node. |
-| `lang` | one of `CLI_LANGUAGES` (required) | Target language. |
+| `lang` | one of `CLI_LANGUAGES` (optional) | Target language. Auto-detected when exactly one scannable file path has a known extension. |
 | `paths` | `string[]` (optional, default `[ctx.cwd]`) | Roots to search. |
 | `globs` | `string[]` (optional) | Include / exclude globs (prefix `!` to exclude). |
 | `context` | `number` (optional) | Lines of context around each match. |
+| `maxResults` | `number` (optional) | Maximum number of results to return. |
+| `resultMode` | `"matches" | "files"` (optional, default `"matches"`) | Return full matches or only matched files. |
 
 ### `ast_grep_replace`
 
@@ -93,7 +150,7 @@ AST-aware rewrite. Dry-run by default.
 |-----------|------|-------------|
 | `pattern` | `string` (required) | AST pattern to match. |
 | `rewrite` | `string` (required) | Replacement pattern. May reference `$VAR` captures from `pattern`. |
-| `lang` | one of `CLI_LANGUAGES` (required) | Target language. |
+| `lang` | one of `CLI_LANGUAGES` (optional) | Target language. Auto-detected when exactly one replace target file has a known extension. |
 | `paths` | `string[]` (optional, default `[ctx.cwd]`) | Roots to search. |
 | `globs` | `string[]` (optional) | Include / exclude globs. |
 | `dryRun` | `boolean` (optional, default `true`) | Preview without writing. Pass `dryRun: false` to apply. |
@@ -129,6 +186,23 @@ When you genuinely want text search, use the built-in `grep` tool instead.
 
 ## Binary Management
 
+### Configurable binary path
+
+You can force a specific ast-grep binary path with:
+
+```bash
+export PI_AST_GREP_PATH=/absolute/path/to/sg
+```
+
+Alias accepted for compatibility:
+
+```bash
+export AST_GREP_BIN=/absolute/path/to/sg
+```
+
+If a configured path is invalid, the extension surfaces an explicit configuration error instead of silently falling back.
+
+
 `pi-ast-grep` resolves the `sg` binary in this order:
 
 1. **Cached download** — `$XDG_CACHE_HOME/pi-ast-grep/bin/sg` on Unix, `%LOCALAPPDATA%\pi-ast-grep\bin\sg.exe` on Windows. Validated by existence and `>10000` byte size.
@@ -136,11 +210,11 @@ When you genuinely want text search, use the built-in `grep` tool instead.
 3. **Platform-specific npm package** — `@ast-grep/cli-{platform}-{arch}-{libc}` (`darwin-arm64`, `darwin-x64`, `linux-arm64`, `linux-x64`, `win32-x64`, `win32-arm64`, `win32-ia32`).
 4. **`PATH`** — any `sg` (or `sg.exe`) on the system PATH.
 5. **Homebrew** — `/opt/homebrew/bin/sg`, `/usr/local/bin/sg` on macOS.
-6. **GitHub release auto-download** (last resort) — pulls `app-{arch}-{os}.zip` from `https://github.com/ast-grep/ast-grep/releases/download/<version>/...` and extracts to the cache directory. The version comes from the `@ast-grep/cli` package.json when present, otherwise `0.41.1`.
+6. **GitHub release auto-download** (explicit opt-in only) — if `PI_AST_GREP_ALLOW_DOWNLOAD=1` is set, the package may pull `app-{arch}-{os}.zip` from `https://github.com/ast-grep/ast-grep/releases/download/<version>/...` and extract it to the cache directory. The version comes from the `@ast-grep/cli` package.json when present, otherwise `0.42.3`.
 
 ### Trust model
 
-Auto-download fetches release assets over HTTPS. There is **no checksum verification beyond TLS**. If your security posture requires reproducible binary provenance, install `sg` manually and disable auto-download with `PI_OFFLINE=1`.
+Auto-download is disabled by default and requires explicit opt-in with `PI_AST_GREP_ALLOW_DOWNLOAD=1`. When enabled, the package fetches release assets over HTTPS and verifies the downloaded binary's `--version` output against the expected ast-grep version. This is stronger than TLS-only transport trust, but it is still **not equivalent to cryptographic checksum verification**. If your security posture requires reproducible binary provenance, install `sg` manually and keep auto-download disabled.
 
 ### Offline / locked-down networks
 

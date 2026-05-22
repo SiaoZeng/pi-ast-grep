@@ -1,8 +1,22 @@
 import type { AgentToolResult, Theme, ToolRenderResultOptions } from "@earendil-works/pi-coding-agent";
 import { type Component, Text, truncateToWidth } from "@earendil-works/pi-tui";
 
-import type { AstGrepReplaceDetails, AstGrepSearchDetails } from "./tools.js";
-import type { CliLanguage, CliMatch, SgTruncationReason } from "./types.js";
+import type {
+	AstGrepParseDetails,
+	AstGrepReplaceDetails,
+	AstGrepScanDetails,
+	AstGrepSearchDetails,
+	AstGrepTestDetails,
+} from "./tools.js";
+import type {
+	AstGrepTestMode,
+	CliLanguage,
+	CliMatch,
+	DebugQueryFormat,
+	SgResultMode,
+	SgStrictness,
+	SgTruncationReason,
+} from "./types.js";
 
 interface RenderContext {
 	lastComponent: Component | undefined;
@@ -15,6 +29,8 @@ interface AstGrepSearchCallArgs {
 	paths?: string[];
 	globs?: string[];
 	context?: number;
+	maxResults?: number;
+	resultMode?: string;
 }
 
 interface AstGrepReplaceCallArgs {
@@ -24,6 +40,34 @@ interface AstGrepReplaceCallArgs {
 	paths?: string[];
 	globs?: string[];
 	dryRun?: boolean;
+}
+
+interface AstGrepParseCallArgs {
+	pattern?: string;
+	lang?: string;
+	format?: string;
+	selector?: string;
+	strictness?: string;
+}
+
+interface AstGrepTestCallArgs {
+	mode?: string;
+	code?: string;
+	lang?: string;
+	pattern?: string;
+	rule?: string;
+}
+
+interface AstGrepScanCallArgs {
+	inlineRules?: string;
+	ruleFile?: string;
+	configPath?: string;
+	paths?: string[];
+	globs?: string[];
+	context?: number;
+	includeMetadata?: boolean;
+	maxResults?: number;
+	resultMode?: string;
 }
 
 interface MatchGroup {
@@ -36,6 +80,8 @@ const MAX_COLLAPSED_FILES = 3;
 const MAX_EXPANDED_MATCHES = 15;
 const MAX_PATH_LENGTH = 42;
 const MAX_SNIPPET_LENGTH = 160;
+const MAX_COLLAPSED_PARSE_LINES = 4;
+const MAX_EXPANDED_PARSE_LINES = 60;
 
 function getTextContent<TDetails>(result: AgentToolResult<TDetails>): string {
 	return result.content.find((content) => content.type === "text")?.text ?? "";
@@ -85,8 +131,31 @@ function isCliLanguage(value: unknown): value is CliLanguage {
 	return typeof value === "string";
 }
 
+function isDebugQueryFormat(value: unknown): value is DebugQueryFormat {
+	return value === "pattern" || value === "ast" || value === "cst" || value === "sexp";
+}
+
+function isStrictness(value: unknown): value is SgStrictness {
+	return (
+		value === "cst" ||
+		value === "smart" ||
+		value === "ast" ||
+		value === "relaxed" ||
+		value === "signature" ||
+		value === "template"
+	);
+}
+
+function isTestMode(value: unknown): value is AstGrepTestMode {
+	return value === "pattern" || value === "rule";
+}
+
 function isTruncationReason(value: unknown): value is SgTruncationReason {
 	return value === "max_matches" || value === "max_output_bytes" || value === "timeout";
+}
+
+function isResultMode(value: unknown): value is SgResultMode {
+	return value === "matches" || value === "files";
 }
 
 function isCliMatch(value: unknown): value is CliMatch {
@@ -128,11 +197,15 @@ function getSearchCallArgs(args: unknown): AstGrepSearchCallArgs | undefined {
 	const paths = readStringArray(args, "paths");
 	const globs = readStringArray(args, "globs");
 	const context = readNumber(args, "context");
+	const maxResults = readNumber(args, "maxResults");
+	const resultMode = readString(args, "resultMode");
 	if (pattern !== undefined) result.pattern = pattern;
 	if (lang !== undefined) result.lang = lang;
 	if (paths !== undefined) result.paths = paths;
 	if (globs !== undefined) result.globs = globs;
 	if (context !== undefined) result.context = context;
+	if (maxResults !== undefined) result.maxResults = maxResults;
+	if (resultMode !== undefined) result.resultMode = resultMode;
 	return result;
 }
 
@@ -157,6 +230,71 @@ function getReplaceCallArgs(args: unknown): AstGrepReplaceCallArgs | undefined {
 	return result;
 }
 
+function getParseCallArgs(args: unknown): AstGrepParseCallArgs | undefined {
+	if (!isRecord(args)) {
+		return undefined;
+	}
+
+	const result: AstGrepParseCallArgs = {};
+	const pattern = readString(args, "pattern");
+	const lang = readString(args, "lang");
+	const format = readString(args, "format");
+	const selector = readString(args, "selector");
+	const strictness = readString(args, "strictness");
+	if (pattern !== undefined) result.pattern = pattern;
+	if (lang !== undefined) result.lang = lang;
+	if (format !== undefined) result.format = format;
+	if (selector !== undefined) result.selector = selector;
+	if (strictness !== undefined) result.strictness = strictness;
+	return result;
+}
+
+function getTestCallArgs(args: unknown): AstGrepTestCallArgs | undefined {
+	if (!isRecord(args)) {
+		return undefined;
+	}
+
+	const result: AstGrepTestCallArgs = {};
+	const mode = readString(args, "mode");
+	const code = readString(args, "code");
+	const lang = readString(args, "lang");
+	const pattern = readString(args, "pattern");
+	const rule = readString(args, "rule");
+	if (mode !== undefined) result.mode = mode;
+	if (code !== undefined) result.code = code;
+	if (lang !== undefined) result.lang = lang;
+	if (pattern !== undefined) result.pattern = pattern;
+	if (rule !== undefined) result.rule = rule;
+	return result;
+}
+
+function getScanCallArgs(args: unknown): AstGrepScanCallArgs | undefined {
+	if (!isRecord(args)) {
+		return undefined;
+	}
+
+	const result: AstGrepScanCallArgs = {};
+	const inlineRules = readString(args, "inlineRules");
+	const ruleFile = readString(args, "ruleFile");
+	const configPath = readString(args, "configPath");
+	const paths = readStringArray(args, "paths");
+	const globs = readStringArray(args, "globs");
+	const context = readNumber(args, "context");
+	const includeMetadata = readBoolean(args, "includeMetadata");
+	const maxResults = readNumber(args, "maxResults");
+	const resultMode = readString(args, "resultMode");
+	if (inlineRules !== undefined) result.inlineRules = inlineRules;
+	if (ruleFile !== undefined) result.ruleFile = ruleFile;
+	if (configPath !== undefined) result.configPath = configPath;
+	if (paths !== undefined) result.paths = paths;
+	if (globs !== undefined) result.globs = globs;
+	if (context !== undefined) result.context = context;
+	if (includeMetadata !== undefined) result.includeMetadata = includeMetadata;
+	if (maxResults !== undefined) result.maxResults = maxResults;
+	if (resultMode !== undefined) result.resultMode = resultMode;
+	return result;
+}
+
 function isSearchDetails(value: unknown): value is AstGrepSearchDetails {
 	if (!isRecord(value)) {
 		return false;
@@ -165,11 +303,16 @@ function isSearchDetails(value: unknown): value is AstGrepSearchDetails {
 	const truncatedReason = value["truncatedReason"];
 	const error = value["error"];
 	const hint = value["hint"];
+	const matchedFiles = value["matchedFiles"];
+	const resultMode = value["resultMode"];
 	return (
 		typeof value["pattern"] === "string" &&
 		isCliLanguage(value["lang"]) &&
 		Array.isArray(value["paths"]) &&
 		value["paths"].every((item) => typeof item === "string") &&
+		isResultMode(resultMode) &&
+		(matchedFiles === undefined ||
+			(Array.isArray(matchedFiles) && matchedFiles.every((item) => typeof item === "string"))) &&
 		isCliMatchArray(value["matches"]) &&
 		typeof value["totalMatches"] === "number" &&
 		typeof value["truncated"] === "boolean" &&
@@ -193,6 +336,86 @@ function isReplaceDetails(value: unknown): value is AstGrepReplaceDetails {
 		Array.isArray(value["paths"]) &&
 		value["paths"].every((item) => typeof item === "string") &&
 		typeof value["dryRun"] === "boolean" &&
+		isCliMatchArray(value["matches"]) &&
+		typeof value["totalMatches"] === "number" &&
+		typeof value["truncated"] === "boolean" &&
+		(truncatedReason === undefined || isTruncationReason(truncatedReason)) &&
+		(error === undefined || typeof error === "string")
+	);
+}
+
+function isParseDetails(value: unknown): value is AstGrepParseDetails {
+	if (!isRecord(value)) {
+		return false;
+	}
+
+	const error = value["error"];
+	const selector = value["selector"];
+	const strictness = value["strictness"];
+	return (
+		typeof value["pattern"] === "string" &&
+		isCliLanguage(value["lang"]) &&
+		isDebugQueryFormat(value["format"]) &&
+		typeof value["output"] === "string" &&
+		(error === undefined || typeof error === "string") &&
+		(selector === undefined || typeof selector === "string") &&
+		(strictness === undefined || isStrictness(strictness))
+	);
+}
+
+function isTestDetails(value: unknown): value is AstGrepTestDetails {
+	if (!isRecord(value)) {
+		return false;
+	}
+
+	const truncatedReason = value["truncatedReason"];
+	const error = value["error"];
+	const hint = value["hint"];
+	const pattern = value["pattern"];
+	const rule = value["rule"];
+	return (
+		isTestMode(value["mode"]) &&
+		typeof value["codeLineCount"] === "number" &&
+		isCliLanguage(value["lang"]) &&
+		(pattern === undefined || typeof pattern === "string") &&
+		(rule === undefined || typeof rule === "string") &&
+		isCliMatchArray(value["matches"]) &&
+		typeof value["totalMatches"] === "number" &&
+		typeof value["truncated"] === "boolean" &&
+		(truncatedReason === undefined || isTruncationReason(truncatedReason)) &&
+		(error === undefined || typeof error === "string") &&
+		(hint === undefined || typeof hint === "string")
+	);
+}
+
+function isScanDetails(value: unknown): value is AstGrepScanDetails {
+	if (!isRecord(value)) {
+		return false;
+	}
+
+	const truncatedReason = value["truncatedReason"];
+	const error = value["error"];
+	const globs = value["globs"];
+	const context = value["context"];
+	const maxResults = value["maxResults"];
+	const matchedFiles = value["matchedFiles"];
+	const resultMode = value["resultMode"];
+	const inlineRules = value["inlineRules"];
+	const ruleFile = value["ruleFile"];
+	const configPath = value["configPath"];
+	return (
+		(inlineRules === undefined || typeof inlineRules === "string") &&
+		(ruleFile === undefined || typeof ruleFile === "string") &&
+		(configPath === undefined || typeof configPath === "string") &&
+		Array.isArray(value["paths"]) &&
+		value["paths"].every((item) => typeof item === "string") &&
+		(globs === undefined || (Array.isArray(globs) && globs.every((item) => typeof item === "string"))) &&
+		(context === undefined || typeof context === "number") &&
+		(maxResults === undefined || typeof maxResults === "number") &&
+		isResultMode(resultMode) &&
+		(matchedFiles === undefined ||
+			(Array.isArray(matchedFiles) && matchedFiles.every((item) => typeof item === "string"))) &&
+		typeof value["includeMetadata"] === "boolean" &&
 		isCliMatchArray(value["matches"]) &&
 		typeof value["totalMatches"] === "number" &&
 		typeof value["truncated"] === "boolean" &&
@@ -258,6 +481,12 @@ function formatSearchBadges(args: AstGrepSearchCallArgs | undefined, theme: Them
 	if (args?.context !== undefined) {
 		badges += theme.fg("dim", ` [context ${args.context}]`);
 	}
+	if (args?.maxResults !== undefined) {
+		badges += theme.fg("dim", ` [max ${args.maxResults}]`);
+	}
+	if (args?.resultMode) {
+		badges += theme.fg("dim", ` [${args.resultMode}]`);
+	}
 	return badges;
 }
 
@@ -269,6 +498,62 @@ function formatReplaceBadges(args: AstGrepReplaceCallArgs | undefined, theme: Th
 	badges += formatGlobBadge(args?.globs, theme);
 	if (args?.dryRun !== false) {
 		badges += theme.fg("warning", " [dry-run]");
+	}
+	return badges;
+}
+
+function formatParseBadges(args: AstGrepParseCallArgs | undefined, theme: Theme): string {
+	let badges = "";
+	if (args?.lang) {
+		badges += theme.fg("dim", ` [${args.lang}]`);
+	}
+	if (args?.format) {
+		badges += theme.fg("dim", ` [${args.format}]`);
+	}
+	if (args?.selector) {
+		badges += theme.fg("dim", ` [selector ${args.selector}]`);
+	}
+	if (args?.strictness) {
+		badges += theme.fg("dim", ` [strictness ${args.strictness}]`);
+	}
+	return badges;
+}
+
+function formatTestBadges(args: AstGrepTestCallArgs | undefined, theme: Theme): string {
+	let badges = "";
+	if (args?.mode) {
+		badges += theme.fg("dim", ` [${args.mode}]`);
+	}
+	if (args?.lang) {
+		badges += theme.fg("dim", ` [${args.lang}]`);
+	}
+	if (args?.code) {
+		const lineCount = args.code.length === 0 ? 0 : args.code.split("\n").length;
+		badges += theme.fg("dim", ` [${lineCount} lines]`);
+	}
+	return badges;
+}
+
+function formatScanBadges(args: AstGrepScanCallArgs | undefined, theme: Theme): string {
+	let badges = "";
+	if (args?.ruleFile) {
+		badges += theme.fg("dim", ` [rule-file ${args.ruleFile}]`);
+	}
+	if (args?.configPath) {
+		badges += theme.fg("dim", ` [config ${args.configPath}]`);
+	}
+	badges += formatGlobBadge(args?.globs, theme);
+	if (args?.context !== undefined) {
+		badges += theme.fg("dim", ` [context ${args.context}]`);
+	}
+	if (args?.includeMetadata) {
+		badges += theme.fg("dim", " [metadata]");
+	}
+	if (args?.maxResults !== undefined) {
+		badges += theme.fg("dim", ` [max ${args.maxResults}]`);
+	}
+	if (args?.resultMode) {
+		badges += theme.fg("dim", ` [${args.resultMode}]`);
 	}
 	return badges;
 }
@@ -411,6 +696,24 @@ function formatFallbackResult<TDetails>(result: AgentToolResult<TDetails>, theme
 	return output.length > 0 ? theme.fg("toolOutput", output) : theme.fg("dim", "No output");
 }
 
+function formatCollapsedParseOutput(output: string, theme: Theme): string {
+	const lines = output.split("\n").filter((line) => line.length > 0);
+	const preview = lines.slice(0, MAX_COLLAPSED_PARSE_LINES).map((line) => theme.fg("toolOutput", line));
+	if (lines.length > MAX_COLLAPSED_PARSE_LINES) {
+		preview.push(theme.fg("dim", `… ${lines.length - MAX_COLLAPSED_PARSE_LINES} more lines`));
+	}
+	return preview.length > 0 ? `\n${preview.join("\n")}` : "";
+}
+
+function formatExpandedParseOutput(output: string, theme: Theme): string {
+	const lines = output.split("\n");
+	const preview = lines.slice(0, MAX_EXPANDED_PARSE_LINES).map((line) => theme.fg("toolOutput", line));
+	if (lines.length > MAX_EXPANDED_PARSE_LINES) {
+		preview.push(theme.fg("dim", `… ${lines.length - MAX_EXPANDED_PARSE_LINES} more lines`));
+	}
+	return preview.length > 0 ? `\n\n${preview.join("\n")}` : "";
+}
+
 function formatSearchResultText(
 	result: AgentToolResult<unknown>,
 	options: ToolRenderResultOptions,
@@ -432,6 +735,16 @@ function formatSearchResultText(
 			text += `\n${theme.fg("muted", details.hint)}`;
 		}
 		return text;
+	}
+
+	if (details.resultMode === "files") {
+		const files = details.matchedFiles ?? [];
+		const summary = theme.fg("success", pluralize(details.totalMatches, "file", "files"));
+		const lines = files.slice(0, MAX_COLLAPSED_FILES).map((file) => theme.fg("muted", `  ${shortenPath(file)}`));
+		if (files.length > MAX_COLLAPSED_FILES) {
+			lines.push(theme.fg("dim", `  … ${files.length - MAX_COLLAPSED_FILES} more files`));
+		}
+		return `${summary}${formatTruncationSuffix(details, theme)}${lines.length > 0 ? `\n${lines.join("\n")}` : ""}`;
 	}
 
 	const groups = groupMatchesByFile(details.matches);
@@ -469,6 +782,134 @@ function formatReplaceResultText(
 		return `${summary}${formatTruncationSuffix(details, theme)}${formatCollapsedMatchGroups(groups, theme)}`;
 	}
 
+	return `${summary}${formatTruncationBanner(details, theme)}${formatExpandedMatches(details.matches, details.totalMatches, theme)}`;
+}
+
+function formatParseResultText(
+	result: AgentToolResult<unknown>,
+	options: ToolRenderResultOptions,
+	theme: Theme,
+	isError: boolean | undefined,
+): string {
+	const details = isParseDetails(result.details) ? result.details : undefined;
+	if (!details) {
+		return formatFallbackResult(result, theme, isError);
+	}
+
+	if (details.error) {
+		return theme.fg("error", `Error: ${truncateMessage(details.error)}`);
+	}
+
+	if (details.output.trim().length === 0) {
+		return theme.fg("dim", "No debug output");
+	}
+
+	const lineCount = details.output.split("\n").length;
+	const summary =
+		theme.fg("success", `query ${details.format} ready`) + theme.fg("muted", ` • ${pluralize(lineCount, "line")}`);
+
+	if (!options.expanded) {
+		return `${summary}${formatCollapsedParseOutput(details.output, theme)}`;
+	}
+
+	return `${summary}${formatExpandedParseOutput(details.output, theme)}`;
+}
+
+function formatCollapsedTestMatches(matches: CliMatch[], totalMatches: number, theme: Theme): string {
+	const lines: string[] = [];
+	for (const match of matches.slice(0, MAX_COLLAPSED_FILES)) {
+		lines.push(
+			theme.fg(
+				"muted",
+				`  ${formatPosition(match)}  ${truncateToWidth(formatMatchLine(match), MAX_SNIPPET_LENGTH)}`,
+			),
+		);
+	}
+	if (totalMatches > MAX_COLLAPSED_FILES) {
+		lines.push(theme.fg("dim", `  … ${totalMatches - MAX_COLLAPSED_FILES} more matches`));
+	}
+	return lines.length > 0 ? `\n${lines.join("\n")}` : "";
+}
+
+function formatExpandedTestMatches(matches: CliMatch[], totalMatches: number, theme: Theme): string {
+	const lines: string[] = [];
+	for (const match of matches.slice(0, MAX_EXPANDED_MATCHES)) {
+		lines.push(
+			`${theme.fg("muted", formatPosition(match))}  ${theme.fg("toolOutput", truncateToWidth(formatMatchLine(match), MAX_SNIPPET_LENGTH))}`,
+		);
+	}
+	if (totalMatches > MAX_EXPANDED_MATCHES) {
+		lines.push(theme.fg("dim", `… ${totalMatches - MAX_EXPANDED_MATCHES} more matches not shown`));
+	}
+	return lines.length > 0 ? `\n\n${lines.join("\n")}` : "";
+}
+
+function formatTestResultText(
+	result: AgentToolResult<unknown>,
+	options: ToolRenderResultOptions,
+	theme: Theme,
+	isError: boolean | undefined,
+): string {
+	const details = isTestDetails(result.details) ? result.details : undefined;
+	if (!details) {
+		return formatFallbackResult(result, theme, isError);
+	}
+
+	if (details.error) {
+		return theme.fg("error", `Error: ${truncateMessage(details.error)}`);
+	}
+
+	if (details.totalMatches === 0) {
+		let text = theme.fg("dim", "No matches found in example code");
+		if (details.hint) {
+			text += `\n${theme.fg("muted", details.hint)}`;
+		}
+		return text;
+	}
+
+	const summary =
+		theme.fg("success", pluralize(details.totalMatches, "match", "matches")) +
+		theme.fg("muted", ` • example code • ${details.mode}`);
+	if (!options.expanded) {
+		return `${summary}${formatTruncationSuffix(details, theme)}${formatCollapsedTestMatches(details.matches, details.totalMatches, theme)}`;
+	}
+	return `${summary}${formatTruncationBanner(details, theme)}${formatExpandedTestMatches(details.matches, details.totalMatches, theme)}`;
+}
+
+function formatScanResultText(
+	result: AgentToolResult<unknown>,
+	options: ToolRenderResultOptions,
+	theme: Theme,
+	isError: boolean | undefined,
+): string {
+	const details = isScanDetails(result.details) ? result.details : undefined;
+	if (!details) {
+		return formatFallbackResult(result, theme, isError);
+	}
+
+	if (details.error) {
+		return theme.fg("error", `Error: ${truncateMessage(details.error)}`);
+	}
+
+	if (details.totalMatches === 0) {
+		return theme.fg("dim", "No matches found");
+	}
+
+	if (details.resultMode === "files") {
+		const files = details.matchedFiles ?? [];
+		const summary = theme.fg("success", pluralize(details.totalMatches, "file", "files"));
+		const lines = files.slice(0, MAX_COLLAPSED_FILES).map((file) => theme.fg("muted", `  ${shortenPath(file)}`));
+		if (files.length > MAX_COLLAPSED_FILES) {
+			lines.push(theme.fg("dim", `  … ${files.length - MAX_COLLAPSED_FILES} more files`));
+		}
+		return `${summary}${formatTruncationSuffix(details, theme)}${lines.length > 0 ? `\n${lines.join("\n")}` : ""}`;
+	}
+
+	const groups = groupMatchesByFile(details.matches);
+	const summary = formatMatchSummary(details.totalMatches, groups.length, theme);
+	if (!options.expanded) {
+		return `${summary}${formatTruncationSuffix(details, theme)}${formatCollapsedMatchGroups(groups, theme)}`;
+	}
 	return `${summary}${formatTruncationBanner(details, theme)}${formatExpandedMatches(details.matches, details.totalMatches, theme)}`;
 }
 
@@ -522,5 +963,82 @@ export function renderReplaceResult(
 ): Text {
 	const text = reuseText(context);
 	text.setText(formatReplaceResultText(result, options, theme, context.isError));
+	return text;
+}
+
+export function renderParseCall(args: unknown, theme: Theme, context: RenderContext): Text {
+	const text = reuseText(context);
+	const callArgs = getParseCallArgs(args);
+	const pattern = callArgs?.pattern ?? "";
+	text.setText(
+		theme.fg("toolTitle", theme.bold("ast_gparse ")) +
+			theme.fg("accent", `/${pattern}/`) +
+			formatParseBadges(callArgs, theme),
+	);
+	return text;
+}
+
+export function renderParseResult(
+	result: AgentToolResult<unknown>,
+	options: ToolRenderResultOptions,
+	theme: Theme,
+	context: RenderContext,
+): Text {
+	const text = reuseText(context);
+	text.setText(formatParseResultText(result, options, theme, context.isError));
+	return text;
+}
+
+export function renderTestCall(args: unknown, theme: Theme, context: RenderContext): Text {
+	const text = reuseText(context);
+	const callArgs = getTestCallArgs(args);
+	const label = callArgs?.mode === "rule" ? "<inline rule>" : `/${callArgs?.pattern ?? ""}/`;
+	text.setText(
+		theme.fg("toolTitle", theme.bold("ast_grep_test ")) +
+			theme.fg("accent", label) +
+			formatTestBadges(callArgs, theme),
+	);
+	return text;
+}
+
+export function renderTestResult(
+	result: AgentToolResult<unknown>,
+	options: ToolRenderResultOptions,
+	theme: Theme,
+	context: RenderContext,
+): Text {
+	const text = reuseText(context);
+	text.setText(formatTestResultText(result, options, theme, context.isError));
+	return text;
+}
+
+export function renderScanCall(args: unknown, theme: Theme, context: RenderContext): Text {
+	const text = reuseText(context);
+	const callArgs = getScanCallArgs(args);
+	const paths = formatPaths(callArgs?.paths);
+	const label = callArgs?.inlineRules
+		? "<inline rules>"
+		: callArgs?.ruleFile
+			? "<rule file>"
+			: callArgs?.configPath
+				? "<config>"
+				: "<scan>";
+	text.setText(
+		theme.fg("toolTitle", theme.bold("ast_grep_scan ")) +
+			theme.fg("accent", label) +
+			theme.fg("toolOutput", ` in ${paths}`) +
+			formatScanBadges(callArgs, theme),
+	);
+	return text;
+}
+
+export function renderScanResult(
+	result: AgentToolResult<unknown>,
+	options: ToolRenderResultOptions,
+	theme: Theme,
+	context: RenderContext,
+): Text {
+	const text = reuseText(context);
+	text.setText(formatScanResultText(result, options, theme, context.isError));
 	return text;
 }

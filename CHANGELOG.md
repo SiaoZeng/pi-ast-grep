@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- safe auto language detection for `ast_grep_search` and `ast_grep_replace` when exactly one file path makes the language unambiguous.
+- `ast_grep_scan` now supports inline rules, rule-file execution, and `sgconfig.yml`-driven project rule discovery.
+- configurable ast-grep binary path override via `PI_AST_GREP_PATH` (and `AST_GREP_BIN` alias), with explicit error reporting for invalid configured paths.
+- auto-download is now explicit opt-in via `PI_AST_GREP_ALLOW_DOWNLOAD=1` instead of implicit fallback.
+- diff-style replace previews when ast-grep JSON provides replacement data.
+- scale controls for structural search and scan, including `maxResults` and `resultMode="files"` surfaces for cheaper repository discovery.
+- bundled guidance resources: the `ast-grep-guidance` skill and `/ast-grep-workflow` prompt template for parse → test → search/scan → replace flows.
+- `ast_grep_scan`, an advanced repository scan tool for running inline YAML ast-grep rules across project files.
+- `ast_grep_test`, a validation tool for checking simple patterns or inline YAML rules against explicit example code before repository-wide search.
+- `ast_gparse`, a pi-native wrapper around `sg run --debug-query`, for inspecting how ast-grep parses structural query patterns before broader searches.
 - Initial release porting omo's `ast_grep_search` and `ast_grep_replace` tools
   as a pi-coding-agent extension.
 - Auto-resolution of the `sg` binary across `@ast-grep/cli` npm package,

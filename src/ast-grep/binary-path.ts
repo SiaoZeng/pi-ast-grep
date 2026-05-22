@@ -7,6 +7,7 @@ import { ensureAstGrepBinary, getCachedBinaryPath } from "./downloader.js";
 type SupportedPlatform = "darwin" | "linux" | "win32";
 
 const MIN_BINARY_SIZE_BYTES = 10_000;
+const CONFIGURED_PATH_ENV_VARS = ["PI_AST_GREP_PATH", "AST_GREP_BIN"] as const;
 
 function isValidBinary(filePath: string): boolean {
 	try {
@@ -37,7 +38,31 @@ function isSupportedPlatform(platform: NodeJS.Platform): platform is SupportedPl
 	return platform === "darwin" || platform === "linux" || platform === "win32";
 }
 
-function findOnPath(binaryName: string): string | null {
+export function getConfiguredSgCliPathOverride(): string | null {
+	for (const envName of CONFIGURED_PATH_ENV_VARS) {
+		const value = process.env[envName];
+		if (typeof value === "string" && value.trim().length > 0) {
+			return value.trim();
+		}
+	}
+	return null;
+}
+
+export function getConfiguredSgCliPathError(): string | null {
+	const configuredPath = getConfiguredSgCliPathOverride();
+	if (!configuredPath) {
+		return null;
+	}
+	if (!existsSync(configuredPath)) {
+		return `Configured ast-grep path does not exist: ${configuredPath}`;
+	}
+	if (!isValidBinary(configuredPath)) {
+		return `Configured ast-grep path is not a valid sg binary: ${configuredPath}`;
+	}
+	return null;
+}
+
+export function findBinaryOnPath(binaryNames: string[]): string | null {
 	const isWindows = process.platform === "win32";
 	const pathEnv = process.env["PATH"] ?? (isWindows ? (process.env["Path"] ?? "") : "");
 	if (!pathEnv) return null;
@@ -45,10 +70,12 @@ function findOnPath(binaryName: string): string | null {
 	const exts = isWindows ? ["", ".exe"] : [""];
 
 	for (const dir of pathEnv.split(delimiter)) {
-		for (const suffix of exts) {
-			const candidate = join(dir, binaryName + suffix);
-			if (existsSync(candidate) && isValidBinary(candidate)) {
-				return candidate;
+		for (const binaryName of binaryNames) {
+			for (const suffix of exts) {
+				const candidate = join(dir, binaryName + suffix);
+				if (existsSync(candidate) && isValidBinary(candidate)) {
+					return candidate;
+				}
 			}
 		}
 	}
@@ -56,7 +83,12 @@ function findOnPath(binaryName: string): string | null {
 }
 
 export function findSgCliPathSync(): string | null {
-	const binaryName = process.platform === "win32" ? "sg.exe" : "sg";
+	const packageBinaryName = process.platform === "win32" ? "sg.exe" : "sg";
+
+	const configuredPath = getConfiguredSgCliPathOverride();
+	if (configuredPath) {
+		return getConfiguredSgCliPathError() === null ? configuredPath : null;
+	}
 
 	const cachedPath = getCachedBinaryPath();
 	if (cachedPath && isValidBinary(cachedPath)) {
@@ -67,7 +99,7 @@ export function findSgCliPathSync(): string | null {
 		const require = createRequire(import.meta.url);
 		const cliPackageJsonPath = require.resolve("@ast-grep/cli/package.json");
 		const cliDirectory = dirname(cliPackageJsonPath);
-		const sgPath = join(cliDirectory, binaryName);
+		const sgPath = join(cliDirectory, packageBinaryName);
 
 		if (existsSync(sgPath) && isValidBinary(sgPath)) {
 			return sgPath;
@@ -89,11 +121,16 @@ export function findSgCliPathSync(): string | null {
 		} catch {}
 	}
 
-	const onPath = findOnPath(binaryName);
+	const onPath = findBinaryOnPath(["sg", "ast-grep"]);
 	if (onPath) return onPath;
 
 	if (process.platform === "darwin") {
-		for (const path of ["/opt/homebrew/bin/sg", "/usr/local/bin/sg"]) {
+		for (const path of [
+			"/opt/homebrew/bin/sg",
+			"/usr/local/bin/sg",
+			"/opt/homebrew/bin/ast-grep",
+			"/usr/local/bin/ast-grep",
+		]) {
 			if (existsSync(path) && isValidBinary(path)) {
 				return path;
 			}
@@ -107,7 +144,7 @@ let resolvedCliPath: string | null = null;
 let initPromise: Promise<string | null> | null = null;
 
 export function getSgCliPath(): string | null {
-	if (resolvedCliPath !== null && existsSync(resolvedCliPath)) {
+	if (resolvedCliPath !== null && isValidBinary(resolvedCliPath)) {
 		return resolvedCliPath;
 	}
 	const syncPath = findSgCliPathSync();
@@ -123,7 +160,7 @@ export function setSgCliPath(path: string): void {
 }
 
 export async function getAstGrepPath(): Promise<string | null> {
-	if (resolvedCliPath !== null && existsSync(resolvedCliPath)) {
+	if (resolvedCliPath !== null && isValidBinary(resolvedCliPath)) {
 		return resolvedCliPath;
 	}
 
@@ -163,12 +200,12 @@ export function startBackgroundInit(): void {
 
 export function isCliAvailable(): boolean {
 	const path = findSgCliPathSync();
-	return path !== null && existsSync(path);
+	return path !== null && isValidBinary(path);
 }
 
 export async function ensureCliAvailable(): Promise<boolean> {
 	const path = await getAstGrepPath();
-	return path !== null && existsSync(path);
+	return path !== null && isValidBinary(path);
 }
 
 export function resetResolvedPathForTests(): void {

@@ -41,6 +41,25 @@ describe("collectProcessOutputWithTimeout", () => {
 		await expect(collectProcessOutputWithTimeout(processHandle, 200)).rejects.toThrow(/timeout after 200ms/i);
 	}, 5_000);
 
+	it("#given sigterm-ignoring process #when timeout elapses #then fallback kill ensures child closes", async () => {
+		// given
+		const processHandle = spawnNode("process.on('SIGTERM', () => {}); setInterval(() => {}, 1000)");
+		const closePromise = new Promise<number | null>((resolve) => {
+			processHandle.once("close", (code) => resolve(code));
+		});
+
+		// when
+		await expect(collectProcessOutputWithTimeout(processHandle, 200)).rejects.toThrow(/timeout after 200ms/i);
+
+		// then
+		await expect(
+			Promise.race([
+				closePromise,
+				new Promise((_, reject) => setTimeout(() => reject(new Error("child did not exit")), 2_000)),
+			]),
+		).resolves.not.toBeUndefined();
+	}, 5_000);
+
 	it("#given empty stdout process #when collecting output #then returns empty stdout and zero exit", async () => {
 		// given
 		const processHandle = spawnNode("");

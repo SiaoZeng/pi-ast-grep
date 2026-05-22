@@ -1,8 +1,12 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
-import { findSgCliPathSync } from "./ast-grep/binary-path.js";
+import {
+	findSgCliPathSync,
+	getConfiguredSgCliPathError,
+	getConfiguredSgCliPathOverride,
+} from "./ast-grep/binary-path.js";
 import { ensureAstGrepBinary, getCacheDir, getCachedBinaryPath } from "./ast-grep/downloader.js";
-import { ast_grep_replace, ast_grep_search } from "./ast-grep/tools.js";
+import { ast_gparse, ast_grep_replace, ast_grep_scan, ast_grep_search, ast_grep_test } from "./ast-grep/tools.js";
 
 /**
  * pi-ast-grep — AST-aware code search and replace for the pi coding agent.
@@ -10,30 +14,38 @@ import { ast_grep_replace, ast_grep_search } from "./ast-grep/tools.js";
  * Ports omo's ast-grep tool stack as a pi extension. Resolves the `sg`
  * binary in this order: cache → @ast-grep/cli npm package → platform
  * package → PATH → Homebrew → GitHub release auto-download (last resort,
- * gated by `PI_OFFLINE`).
+ * gated by `PI_OFFLINE` and explicit `PI_AST_GREP_ALLOW_DOWNLOAD=1`).
  *
  * Tools registered:
  *   - ast_grep_search   — AST pattern search across files (parallel-safe)
  *   - ast_grep_replace  — AST pattern replace, sequential when applying
+ *   - ast_gparse        — AST/query debug inspection for ast-grep patterns
+ *   - ast_grep_test     — validate patterns or inline rules against example code
+ *   - ast_grep_scan     — run advanced inline YAML rules across repository files
  *
  * Commands registered:
- *   - /ast-grep         — show binary path, version, and cache location
- *   - /ast-grep install — force-download the sg binary into the cache
+ *   - /ast-grep         — show binary path and cache/config state
+ *   - /ast-grep install — opt-in download attempt for the sg binary cache
  *
  * See README.md for installation and usage.
  */
 export default function (pi: ExtensionAPI): void {
+	pi.registerTool(ast_gparse);
+	pi.registerTool(ast_grep_test);
+	pi.registerTool(ast_grep_scan);
 	pi.registerTool(ast_grep_search);
 	pi.registerTool(ast_grep_replace);
 
 	pi.registerCommand("ast-grep", {
-		description: "Show ast-grep binary path, version, and cache directory",
+		description: "Show ast-grep binary path and cache/config directory state",
 		handler: async (args, ctx) => {
 			const trimmed = args.trim();
 			const wantsInstall = trimmed === "install" || trimmed === "download";
 
 			const cachedPath = getCachedBinaryPath();
 			const localPath = findSgCliPathSync();
+			const configuredPath = getConfiguredSgCliPathOverride();
+			const configuredPathError = getConfiguredSgCliPathError();
 			const cacheDir = getCacheDir();
 
 			if (wantsInstall) {
@@ -44,7 +56,7 @@ export default function (pi: ExtensionAPI): void {
 					ctx.ui.notify(`ast-grep ready: ${path}`, "info");
 				} else {
 					ctx.ui.notify(
-						"Auto-download failed. Try: npm install -g @ast-grep/cli or brew install ast-grep",
+						"Auto-download unavailable or failed. Set PI_AST_GREP_ALLOW_DOWNLOAD=1 to opt in, or install via npm/cargo/brew.",
 						"error",
 					);
 				}
@@ -53,9 +65,11 @@ export default function (pi: ExtensionAPI): void {
 
 			const lines = [
 				"pi-ast-grep",
-				`  Cache dir : ${cacheDir}`,
-				`  Cached sg : ${cachedPath ?? "not downloaded"}`,
-				`  Local sg  : ${localPath ?? "not on PATH"}`,
+				`  Cache dir      : ${cacheDir}`,
+				`  Configured sg  : ${configuredPath ?? "not configured"}`,
+				`  Config error   : ${configuredPathError ?? "none"}`,
+				`  Cached sg      : ${cachedPath ?? "not downloaded"}`,
+				`  Local sg       : ${localPath ?? "not on PATH"}`,
 			].join("\n");
 			ctx.ui.notify(lines, "info");
 		},

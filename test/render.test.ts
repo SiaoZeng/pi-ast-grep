@@ -2,8 +2,20 @@ import type { AgentToolResult } from "@earendil-works/pi-coding-agent";
 import { Theme } from "@earendil-works/pi-coding-agent";
 import { describe, expect, it } from "vitest";
 
-import { renderReplaceResult, renderSearchResult } from "../src/ast-grep/render.js";
-import type { AstGrepReplaceDetails, AstGrepSearchDetails } from "../src/ast-grep/tools.js";
+import {
+	renderParseResult,
+	renderReplaceResult,
+	renderScanResult,
+	renderSearchResult,
+	renderTestResult,
+} from "../src/ast-grep/render.js";
+import type {
+	AstGrepParseDetails,
+	AstGrepReplaceDetails,
+	AstGrepScanDetails,
+	AstGrepSearchDetails,
+	AstGrepTestDetails,
+} from "../src/ast-grep/tools.js";
 import { makeCliMatch } from "./helpers/sg-fixtures.js";
 
 const ANSI_PATTERN = /\u001b\[[0-9;]*m/g;
@@ -104,6 +116,7 @@ function makeSearchDetails(overrides: Partial<AstGrepSearchDetails> = {}): AstGr
 		pattern: "console.$METHOD($$$)",
 		lang: "typescript",
 		paths: ["src"],
+		resultMode: "matches",
 		matches,
 		totalMatches: matches.length,
 		truncated: false,
@@ -127,6 +140,77 @@ function makeReplaceDetails(overrides: Partial<AstGrepReplaceDetails> = {}): Ast
 		lang: "typescript",
 		paths: ["src"],
 		dryRun: true,
+		matches,
+		totalMatches: matches.length,
+		truncated: false,
+		...overrides,
+	};
+}
+
+function makeParseDetails(overrides: Partial<AstGrepParseDetails> = {}): AstGrepParseDetails {
+	return {
+		pattern: "function $NAME($$$) { $$$ }",
+		lang: "typescript",
+		format: "ast",
+		output: [
+			"Debug AST:",
+			"program (0,0)-(0,27)",
+			"  function_declaration (0,0)-(0,27)",
+			"    name: identifier (0,9)-(0,14)",
+		].join("\n"),
+		...overrides,
+	};
+}
+
+function makeTestDetails(overrides: Partial<AstGrepTestDetails> = {}): AstGrepTestDetails {
+	const matches = [
+		makeCliMatch({
+			file: "STDIN",
+			lines: 'console.log("hi")',
+			text: 'console.log("hi")',
+			range: {
+				byteOffset: { start: 0, end: 17 },
+				start: { line: 0, column: 0 },
+				end: { line: 0, column: 17 },
+			},
+		}),
+	];
+
+	return {
+		mode: "pattern",
+		codeLineCount: 1,
+		lang: "typescript",
+		pattern: "console.log($MSG)",
+		matches,
+		totalMatches: matches.length,
+		truncated: false,
+		...overrides,
+	};
+}
+
+function makeScanDetails(overrides: Partial<AstGrepScanDetails> = {}): AstGrepScanDetails {
+	const matches = [
+		makeCliMatch({
+			file: "src/logger.ts",
+			ruleId: "find-console-log",
+			severity: "warning",
+			message: "avoid console",
+		}),
+		makeCliMatch({
+			file: "src/console.ts",
+			lines: "console.error(message);",
+			text: "console.error(message);",
+			ruleId: "find-console-log",
+			severity: "warning",
+			message: "avoid console",
+		}),
+	];
+
+	return {
+		inlineRules: ["id: find-console-log", "language: typescript", "rule:", "  pattern: console.log($MSG)"].join("\n"),
+		paths: ["src"],
+		includeMetadata: false,
+		resultMode: "matches",
 		matches,
 		totalMatches: matches.length,
 		truncated: false,
@@ -177,6 +261,30 @@ describe("renderSearchResult", () => {
 		expect(output).toContain("src/console.ts");
 		expect(output).toContain("8:2");
 		expect(output).toContain("console.error(message);");
+	});
+
+	it("#given file-only search result #when collapsed #then shows matched files summary", () => {
+		// given
+		const details = makeSearchDetails({
+			resultMode: "files",
+			matchedFiles: ["src/logger.ts", "src/console.ts"],
+			matches: [],
+			totalMatches: 2,
+		});
+		const result: AgentToolResult<AstGrepSearchDetails> = {
+			content: [{ type: "text", text: "" }],
+			details,
+		};
+
+		// when
+		const output = renderText(
+			renderSearchResult(result, { expanded: false, isPartial: false }, testTheme, { lastComponent: undefined }),
+		);
+
+		// then
+		expect(output).toContain("2 files");
+		expect(output).toContain("src/logger.ts");
+		expect(output).toContain("src/console.ts");
 	});
 
 	it("#given max output truncation #when collapsed #then explains the byte limit", () => {
@@ -236,5 +344,182 @@ describe("renderReplaceResult", () => {
 		expect(output).toContain("2 files");
 		expect(output).toContain("src/logger.ts");
 		expect(output).toContain("src/console.ts");
+	});
+});
+
+describe("renderParseResult", () => {
+	it("#given parse output #when collapsed #then shows summary and preview lines", () => {
+		// given
+		const details = makeParseDetails();
+		const result: AgentToolResult<AstGrepParseDetails> = {
+			content: [{ type: "text", text: "" }],
+			details,
+		};
+
+		// when
+		const output = renderText(
+			renderParseResult(result, { expanded: false, isPartial: false }, testTheme, { lastComponent: undefined }),
+		);
+
+		// then
+		expect(output).toContain("query ast ready");
+		expect(output).toContain("4 lines");
+		expect(output).toContain("Debug AST:");
+		expect(output).toContain("function_declaration");
+	});
+
+	it("#given parse output #when expanded #then renders the full debug output", () => {
+		// given
+		const details = makeParseDetails();
+		const result: AgentToolResult<AstGrepParseDetails> = {
+			content: [{ type: "text", text: "" }],
+			details,
+		};
+
+		// when
+		const output = renderText(
+			renderParseResult(result, { expanded: true, isPartial: false }, testTheme, { lastComponent: undefined }),
+		);
+
+		// then
+		expect(output).toContain("query ast ready");
+		expect(output).toContain("program (0,0)-(0,27)");
+		expect(output).toContain("name: identifier");
+	});
+
+	it("#given parse error details #when rendering #then keeps the failure visible", () => {
+		// given
+		const details = makeParseDetails({ output: "", error: "bad pattern" });
+		const result: AgentToolResult<AstGrepParseDetails> = {
+			content: [{ type: "text", text: "" }],
+			details,
+		};
+
+		// when
+		const output = renderText(
+			renderParseResult(result, { expanded: false, isPartial: false }, testTheme, { lastComponent: undefined }),
+		);
+
+		// then
+		expect(output).toContain("Error: bad pattern");
+	});
+});
+
+describe("renderScanResult", () => {
+	it("#given scan matches #when collapsed #then shows match summary and file preview", () => {
+		// given
+		const details = makeScanDetails();
+		const result: AgentToolResult<AstGrepScanDetails> = {
+			content: [{ type: "text", text: "" }],
+			details,
+		};
+
+		// when
+		const output = renderText(
+			renderScanResult(result, { expanded: false, isPartial: false }, testTheme, { lastComponent: undefined }),
+		);
+
+		// then
+		expect(output).toContain("2 matches");
+		expect(output).toContain("2 files");
+		expect(output).toContain("src/logger.ts");
+		expect(output).toContain("src/console.ts");
+	});
+
+	it("#given scan file-only result #when rendering #then shows file summary", () => {
+		// given
+		const details = makeScanDetails({
+			resultMode: "files",
+			matchedFiles: ["src/logger.ts"],
+			matches: [],
+			totalMatches: 1,
+		});
+		const result: AgentToolResult<AstGrepScanDetails> = {
+			content: [{ type: "text", text: "" }],
+			details,
+		};
+
+		// when
+		const output = renderText(
+			renderScanResult(result, { expanded: false, isPartial: false }, testTheme, { lastComponent: undefined }),
+		);
+
+		// then
+		expect(output).toContain("1 file");
+		expect(output).toContain("src/logger.ts");
+	});
+
+	it("#given scan error #when rendering #then keeps the failure visible", () => {
+		// given
+		const details = makeScanDetails({ matches: [], totalMatches: 0, error: "invalid rule" });
+		const result: AgentToolResult<AstGrepScanDetails> = {
+			content: [{ type: "text", text: "" }],
+			details,
+		};
+
+		// when
+		const output = renderText(
+			renderScanResult(result, { expanded: false, isPartial: false }, testTheme, { lastComponent: undefined }),
+		);
+
+		// then
+		expect(output).toContain("Error: invalid rule");
+	});
+});
+
+describe("renderTestResult", () => {
+	it("#given test matches #when collapsed #then shows example-code summary and preview", () => {
+		// given
+		const details = makeTestDetails();
+		const result: AgentToolResult<AstGrepTestDetails> = {
+			content: [{ type: "text", text: "" }],
+			details,
+		};
+
+		// when
+		const output = renderText(
+			renderTestResult(result, { expanded: false, isPartial: false }, testTheme, { lastComponent: undefined }),
+		);
+
+		// then
+		expect(output).toContain("1 match");
+		expect(output).toContain("example code");
+		expect(output).toContain("pattern");
+		expect(output).toContain('console.log("hi")');
+	});
+
+	it("#given no match test result with hint #when rendering #then keeps hint visible", () => {
+		// given
+		const details = makeTestDetails({ matches: [], totalMatches: 0, hint: "use $VAR" });
+		const result: AgentToolResult<AstGrepTestDetails> = {
+			content: [{ type: "text", text: "" }],
+			details,
+		};
+
+		// when
+		const output = renderText(
+			renderTestResult(result, { expanded: false, isPartial: false }, testTheme, { lastComponent: undefined }),
+		);
+
+		// then
+		expect(output).toContain("No matches found in example code");
+		expect(output).toContain("use $VAR");
+	});
+
+	it("#given test error #when rendering #then keeps the failure visible", () => {
+		// given
+		const details = makeTestDetails({ matches: [], totalMatches: 0, error: "invalid rule" });
+		const result: AgentToolResult<AstGrepTestDetails> = {
+			content: [{ type: "text", text: "" }],
+			details,
+		};
+
+		// when
+		const output = renderText(
+			renderTestResult(result, { expanded: false, isPartial: false }, testTheme, { lastComponent: undefined }),
+		);
+
+		// then
+		expect(output).toContain("Error: invalid rule");
 	});
 });

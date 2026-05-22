@@ -1,4 +1,5 @@
-import { existsSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { existsSync, rmSync, statSync } from "node:fs";
 import { createRequire } from "node:module";
 import { homedir } from "node:os";
 import { join } from "node:path";
@@ -14,7 +15,9 @@ import {
 
 const REPO = "ast-grep/ast-grep";
 const CACHE_DIR_NAME = "pi-ast-grep";
-const DEFAULT_VERSION = "0.41.1";
+const DEFAULT_VERSION = "0.42.3";
+const AUTO_DOWNLOAD_ENV_VARS = ["PI_AST_GREP_ALLOW_DOWNLOAD"] as const;
+const MIN_BINARY_SIZE_BYTES = 10_000;
 
 interface PlatformInfo {
 	arch: string;
@@ -45,6 +48,38 @@ function isPackageWithVersion(value: unknown): value is { version: string } {
 	return typeof value === "object" && value !== null && "version" in value && typeof value.version === "string";
 }
 
+function isUsableBinaryPath(filePath: string): boolean {
+	try {
+		return existsSync(filePath) && filePath.length > 0 && statSync(filePath).size > MIN_BINARY_SIZE_BYTES;
+	} catch {
+		return false;
+	}
+}
+
+export function isVersionOutputCompatible(output: string, expectedVersion: string): boolean {
+	const normalized = output.trim();
+	return normalized.startsWith("ast-grep ") && normalized.includes(expectedVersion);
+}
+
+function validateDownloadedBinaryVersion(binaryPath: string, expectedVersion: string): boolean {
+	const result = spawnSync(binaryPath, ["--version"], {
+		encoding: "utf-8",
+		stdio: ["ignore", "pipe", "pipe"],
+	});
+	const combined = `${result.stdout ?? ""}\n${result.stderr ?? ""}`;
+	return result.status === 0 && isVersionOutputCompatible(combined, expectedVersion);
+}
+
+export function isAutoDownloadEnabled(): boolean {
+	for (const envName of AUTO_DOWNLOAD_ENV_VARS) {
+		const value = process.env[envName];
+		if (value === "1" || value === "true" || value === "yes") {
+			return true;
+		}
+	}
+	return false;
+}
+
 export function getCacheDir(): string {
 	if (process.platform === "win32") {
 		const localAppData = process.env["LOCALAPPDATA"] ?? process.env["APPDATA"];
@@ -67,6 +102,9 @@ export function getCachedBinaryPath(): string | null {
 
 export async function downloadAstGrep(version: string = DEFAULT_VERSION): Promise<string | null> {
 	if (process.env["PI_OFFLINE"] === "1" || process.env["PI_OFFLINE"] === "true") {
+		return null;
+	}
+	if (!isAutoDownloadEnabled()) {
 		return null;
 	}
 
@@ -97,7 +135,15 @@ export async function downloadAstGrep(version: string = DEFAULT_VERSION): Promis
 		cleanupArchive(archivePath);
 		ensureExecutable(binaryPath);
 
-		return existsSync(binaryPath) ? binaryPath : null;
+		if (!existsSync(binaryPath)) {
+			return null;
+		}
+		if (!validateDownloadedBinaryVersion(binaryPath, version)) {
+			rmSync(binaryPath, { force: true });
+			return null;
+		}
+
+		return binaryPath;
 	} catch {
 		return null;
 	}
@@ -107,9 +153,12 @@ export async function ensureAstGrepBinary(): Promise<string | null> {
 	if (process.env["PI_OFFLINE"] === "1" || process.env["PI_OFFLINE"] === "true") {
 		return null;
 	}
+	if (!isAutoDownloadEnabled()) {
+		return null;
+	}
 
 	const cachedPath = getCachedBinaryPath();
-	if (cachedPath) {
+	if (cachedPath && isUsableBinaryPath(cachedPath)) {
 		return cachedPath;
 	}
 
@@ -117,4 +166,4 @@ export async function ensureAstGrepBinary(): Promise<string | null> {
 	return downloadAstGrep(version);
 }
 
-export { DEFAULT_VERSION as DEFAULT_AST_GREP_VERSION, PLATFORM_MAP };
+export { AUTO_DOWNLOAD_ENV_VARS, DEFAULT_VERSION as DEFAULT_AST_GREP_VERSION, PLATFORM_MAP };

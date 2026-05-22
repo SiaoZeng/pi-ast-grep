@@ -15,6 +15,24 @@ export function formatSearchResult(result: SgResult): string {
 		return `Error: ${result.error}`;
 	}
 
+	if (result.resultMode === "files") {
+		const matchedFiles = result.matchedFiles ?? [];
+		if (matchedFiles.length === 0) {
+			return "No matches found";
+		}
+		const lines: string[] = [];
+		if (result.truncated) {
+			lines.push(`[TRUNCATED] Results truncated (${formatTruncationReason(result)})\n`);
+		}
+		lines.push(
+			`Found ${matchedFiles.length} file match(es)${result.truncated ? ` (truncated from ${result.totalMatches})` : ""}:\n`,
+		);
+		for (const file of matchedFiles) {
+			lines.push(file);
+		}
+		return lines.join("\n");
+	}
+
 	if (result.matches.length === 0) {
 		return "No matches found";
 	}
@@ -62,7 +80,12 @@ export function formatReplaceResult(result: SgResult, isDryRun: boolean): string
 	for (const match of result.matches) {
 		const loc = `${match.file}:${match.range.start.line + 1}:${match.range.start.column + 1}`;
 		lines.push(`${loc}`);
-		lines.push(`  ${match.text}`);
+		if (match.replacement !== undefined) {
+			lines.push(`  - ${match.text}`);
+			lines.push(`  + ${match.replacement}`);
+		} else {
+			lines.push(`  ${match.text}`);
+		}
 		lines.push("");
 	}
 

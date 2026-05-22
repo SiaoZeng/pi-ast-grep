@@ -1,0 +1,12 @@
+.github/
+AGENTS.md
+biome.json
+docs/
+test/
+tsconfig.json
+vitest.config.ts
+package-lock.json
+coverage/
+dist/
+.pi/
+.sisyphus/

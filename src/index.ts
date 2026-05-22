@@ -56,7 +56,7 @@ export default function (pi: ExtensionAPI): void {
 					ctx.ui.notify(`ast-grep ready: ${path}`, "info");
 				} else {
 					ctx.ui.notify(
-						"Auto-download failed. Try: npm install -g @ast-grep/cli or brew install ast-grep",
+						"Auto-download unavailable or failed. Set PI_AST_GREP_ALLOW_DOWNLOAD=1 to opt in, or install via npm/cargo/brew.",
 						"error",
 					);
 				}

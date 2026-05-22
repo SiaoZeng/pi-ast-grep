@@ -16,6 +16,7 @@ import {
 const REPO = "ast-grep/ast-grep";
 const CACHE_DIR_NAME = "pi-ast-grep";
 const DEFAULT_VERSION = "0.42.3";
+const AUTO_DOWNLOAD_ENV_VARS = ["PI_AST_GREP_ALLOW_DOWNLOAD"] as const;
 
 interface PlatformInfo {
 	arch: string;
@@ -60,6 +61,16 @@ function validateDownloadedBinaryVersion(binaryPath: string, expectedVersion: st
 	return result.status === 0 && isVersionOutputCompatible(combined, expectedVersion);
 }
 
+export function isAutoDownloadEnabled(): boolean {
+	for (const envName of AUTO_DOWNLOAD_ENV_VARS) {
+		const value = process.env[envName];
+		if (value === "1" || value === "true" || value === "yes") {
+			return true;
+		}
+	}
+	return false;
+}
+
 export function getCacheDir(): string {
 	if (process.platform === "win32") {
 		const localAppData = process.env["LOCALAPPDATA"] ?? process.env["APPDATA"];
@@ -82,6 +93,9 @@ export function getCachedBinaryPath(): string | null {
 
 export async function downloadAstGrep(version: string = DEFAULT_VERSION): Promise<string | null> {
 	if (process.env["PI_OFFLINE"] === "1" || process.env["PI_OFFLINE"] === "true") {
+		return null;
+	}
+	if (!isAutoDownloadEnabled()) {
 		return null;
 	}
 
@@ -130,6 +144,9 @@ export async function ensureAstGrepBinary(): Promise<string | null> {
 	if (process.env["PI_OFFLINE"] === "1" || process.env["PI_OFFLINE"] === "true") {
 		return null;
 	}
+	if (!isAutoDownloadEnabled()) {
+		return null;
+	}
 
 	const cachedPath = getCachedBinaryPath();
 	if (cachedPath) {
@@ -140,4 +157,4 @@ export async function ensureAstGrepBinary(): Promise<string | null> {
 	return downloadAstGrep(version);
 }
 
-export { DEFAULT_VERSION as DEFAULT_AST_GREP_VERSION, PLATFORM_MAP };
+export { AUTO_DOWNLOAD_ENV_VARS, DEFAULT_VERSION as DEFAULT_AST_GREP_VERSION, PLATFORM_MAP };

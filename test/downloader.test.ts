@@ -6,11 +6,13 @@ import {
 	DEFAULT_AST_GREP_VERSION,
 	getBinaryName,
 	getCacheDir,
+	isAutoDownloadEnabled,
 	isVersionOutputCompatible,
 	PLATFORM_MAP,
 } from "../src/ast-grep/downloader.js";
 
 const originalXdgCacheHome = process.env["XDG_CACHE_HOME"];
+const originalAllowDownload = process.env["PI_AST_GREP_ALLOW_DOWNLOAD"];
 
 describe("downloader helpers", () => {
 	beforeEach(() => {
@@ -20,10 +22,14 @@ describe("downloader helpers", () => {
 	afterEach(() => {
 		if (originalXdgCacheHome === undefined) {
 			delete process.env["XDG_CACHE_HOME"];
-			return;
+		} else {
+			process.env["XDG_CACHE_HOME"] = originalXdgCacheHome;
 		}
-
-		process.env["XDG_CACHE_HOME"] = originalXdgCacheHome;
+		if (originalAllowDownload === undefined) {
+			delete process.env["PI_AST_GREP_ALLOW_DOWNLOAD"];
+		} else {
+			process.env["PI_AST_GREP_ALLOW_DOWNLOAD"] = originalAllowDownload;
+		}
 	});
 
 	it("#given cache environment override #when building cache dir #then returns pi ast grep cache path", () => {
@@ -74,5 +80,17 @@ describe("downloader helpers", () => {
 		// given / when / then
 		expect(isVersionOutputCompatible("ast-grep 0.42.3", "0.42.3")).toBe(true);
 		expect(isVersionOutputCompatible("ast-grep 0.42.2", "0.42.3")).toBe(false);
+	});
+
+	it("#given auto download env flag #when inspecting enablement #then requires explicit opt in", () => {
+		// given
+		delete process.env["PI_AST_GREP_ALLOW_DOWNLOAD"];
+		expect(isAutoDownloadEnabled()).toBe(false);
+
+		// when
+		process.env["PI_AST_GREP_ALLOW_DOWNLOAD"] = "1";
+
+		// then
+		expect(isAutoDownloadEnabled()).toBe(true);
 	});
 });

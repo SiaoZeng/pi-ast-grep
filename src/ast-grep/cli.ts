@@ -10,7 +10,7 @@ import {
 	createSgResultFromStreamStdout,
 } from "./json-output.js";
 import { DEFAULT_TIMEOUT_MS, detectCliLanguageFromPath } from "./languages.js";
-import { collectProcessOutputWithTimeout } from "./process-timeout.js";
+import { collectProcessOutputByLineLimitWithTimeout, collectProcessOutputWithTimeout } from "./process-timeout.js";
 import type {
 	CliLanguage,
 	RunSgDebugQueryOptions,
@@ -152,6 +152,22 @@ async function spawnSg(cliPath: string, args: string[], timeoutMs: number, stdin
 	return collectProcessOutputWithTimeout(proc, timeoutMs);
 }
 
+async function spawnSgWithLineLimit(
+	cliPath: string,
+	args: string[],
+	timeoutMs: number,
+	lineLimit?: number,
+	stdinText?: string,
+) {
+	const proc = spawn(cliPath, args, { stdio: ["pipe", "pipe", "pipe"] });
+	if (stdinText !== undefined) {
+		proc.stdin?.end(stdinText);
+	} else {
+		proc.stdin?.end();
+	}
+	return collectProcessOutputByLineLimitWithTimeout(proc, timeoutMs, lineLimit);
+}
+
 function normalizeSgErrorResult(error: string): SgResult {
 	return {
 		matches: [],
@@ -237,12 +253,17 @@ export async function runSg(options: RunSgOptions, hasRetriedDownload = false): 
 	let stdout: string;
 	let stderr: string;
 	let exitCode: number;
+	let stoppedEarly = false;
 
 	try {
-		const output = await spawnSg(cliPath, args, timeout);
+		const output =
+			shouldUseStream && readOptions.maxResults !== undefined && readOptions.maxResults > 0
+				? await spawnSgWithLineLimit(cliPath, args, timeout, readOptions.maxResults)
+				: await spawnSg(cliPath, args, timeout);
 		stdout = output.stdout;
 		stderr = output.stderr;
 		exitCode = output.exitCode;
+		stoppedEarly = "stoppedEarly" in output && output.stoppedEarly === true;
 	} catch (error) {
 		if (error instanceof SearchTimeoutError) {
 			return {
@@ -287,6 +308,10 @@ export async function runSg(options: RunSgOptions, hasRetriedDownload = false): 
 	}
 
 	const jsonResult = createSgResultFromMode(stdout, readOptions.resultMode ?? "matches", readOptions.maxResults);
+	if (stoppedEarly) {
+		jsonResult.truncated = true;
+		jsonResult.truncatedReason = "max_matches";
+	}
 
 	if (shouldSeparateWritePass && jsonResult.matches.length > 0) {
 		const writeArgs = buildSgArgs(options, false, "compact");
@@ -429,13 +454,22 @@ export async function runSgScan(options: RunSgScanOptions, hasRetriedDownload = 
 	try {
 		const shouldUseStream =
 			options.resultMode === "files" || (options.maxResults !== undefined && options.maxResults > 0);
-		const output = await spawnSg(
-			cliPath,
-			buildSgScanArgs(options, shouldUseStream ? "stream" : "compact"),
-			DEFAULT_TIMEOUT_MS,
-		);
+		const output =
+			shouldUseStream && options.maxResults !== undefined && options.maxResults > 0
+				? await spawnSgWithLineLimit(
+						cliPath,
+						buildSgScanArgs(options, shouldUseStream ? "stream" : "compact"),
+						DEFAULT_TIMEOUT_MS,
+						options.maxResults,
+					)
+				: await spawnSg(
+						cliPath,
+						buildSgScanArgs(options, shouldUseStream ? "stream" : "compact"),
+						DEFAULT_TIMEOUT_MS,
+					);
 		const stdout = output.stdout.trim();
 		const stderr = output.stderr.trim();
+		const stoppedEarly = "stoppedEarly" in output && output.stoppedEarly === true;
 		if (output.exitCode !== 0 && stdout.length === 0) {
 			if (stderr.includes("No files found")) {
 				return { matches: [], totalMatches: 0, truncated: false, resultMode: options.resultMode ?? "matches" };
@@ -443,6 +477,10 @@ export async function runSgScan(options: RunSgScanOptions, hasRetriedDownload = 
 			return normalizeSgErrorResult(stderr || `ast-grep exited with code ${output.exitCode}`);
 		}
 		const result = createSgResultFromMode(stdout, options.resultMode ?? "matches", options.maxResults);
+		if (stoppedEarly) {
+			result.truncated = true;
+			result.truncatedReason = "max_matches";
+		}
 		if (output.exitCode !== 0 && result.error === undefined) {
 			result.error = stderr || `ast-grep exited with code ${output.exitCode}`;
 		}

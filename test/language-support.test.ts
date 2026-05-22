@@ -5,6 +5,7 @@ import {
 	DEFAULT_MAX_MATCHES,
 	DEFAULT_MAX_OUTPUT_BYTES,
 	DEFAULT_TIMEOUT_MS,
+	detectCliLanguageFromPath,
 	LANG_EXTENSIONS,
 } from "../src/ast-grep/languages.js";
 
@@ -62,5 +63,10 @@ describe("language support", () => {
 		// then
 		expect(pythonExtensions).toContain(".py");
 		expect(pythonExtensions).toContain(".pyi");
+	});
+
+	it("#given ambiguous extension #when detecting language from path #then returns null instead of guessing", () => {
+		// given / when / then
+		expect(detectCliLanguageFromPath("foo.h")).toBeNull();
 	});
 });

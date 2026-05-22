@@ -60,13 +60,12 @@ export const LANG_EXTENSIONS: Record<string, string[]> = {
 
 export function detectCliLanguageFromPath(filePath: string): (typeof CLI_LANGUAGES)[number] | null {
 	const normalized = filePath.toLowerCase();
-	for (const language of CLI_LANGUAGES) {
+	const matches = CLI_LANGUAGES.filter((language) => {
 		const exts = LANG_EXTENSIONS[language] ?? [];
-		for (const ext of exts) {
-			if (normalized.endsWith(ext)) {
-				return language;
-			}
-		}
+		return exts.some((ext) => normalized.endsWith(ext));
+	});
+	if (matches.length !== 1) {
+		return null;
 	}
-	return null;
+	return matches[0] ?? null;
 }

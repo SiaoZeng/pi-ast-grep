@@ -1,7 +1,13 @@
 import type { AgentToolResult, Theme, ToolRenderResultOptions } from "@earendil-works/pi-coding-agent";
 import { type Component, Text, truncateToWidth } from "@earendil-works/pi-tui";
 
-import type { AstGrepParseDetails, AstGrepReplaceDetails, AstGrepSearchDetails, AstGrepTestDetails } from "./tools.js";
+import type {
+	AstGrepParseDetails,
+	AstGrepReplaceDetails,
+	AstGrepScanDetails,
+	AstGrepSearchDetails,
+	AstGrepTestDetails,
+} from "./tools.js";
 import type {
 	AstGrepTestMode,
 	CliLanguage,
@@ -47,6 +53,14 @@ interface AstGrepTestCallArgs {
 	lang?: string;
 	pattern?: string;
 	rule?: string;
+}
+
+interface AstGrepScanCallArgs {
+	inlineRules?: string;
+	paths?: string[];
+	globs?: string[];
+	context?: number;
+	includeMetadata?: boolean;
 }
 
 interface MatchGroup {
@@ -239,6 +253,25 @@ function getTestCallArgs(args: unknown): AstGrepTestCallArgs | undefined {
 	return result;
 }
 
+function getScanCallArgs(args: unknown): AstGrepScanCallArgs | undefined {
+	if (!isRecord(args)) {
+		return undefined;
+	}
+
+	const result: AstGrepScanCallArgs = {};
+	const inlineRules = readString(args, "inlineRules");
+	const paths = readStringArray(args, "paths");
+	const globs = readStringArray(args, "globs");
+	const context = readNumber(args, "context");
+	const includeMetadata = readBoolean(args, "includeMetadata");
+	if (inlineRules !== undefined) result.inlineRules = inlineRules;
+	if (paths !== undefined) result.paths = paths;
+	if (globs !== undefined) result.globs = globs;
+	if (context !== undefined) result.context = context;
+	if (includeMetadata !== undefined) result.includeMetadata = includeMetadata;
+	return result;
+}
+
 function isSearchDetails(value: unknown): value is AstGrepSearchDetails {
 	if (!isRecord(value)) {
 		return false;
@@ -324,6 +357,30 @@ function isTestDetails(value: unknown): value is AstGrepTestDetails {
 		(truncatedReason === undefined || isTruncationReason(truncatedReason)) &&
 		(error === undefined || typeof error === "string") &&
 		(hint === undefined || typeof hint === "string")
+	);
+}
+
+function isScanDetails(value: unknown): value is AstGrepScanDetails {
+	if (!isRecord(value)) {
+		return false;
+	}
+
+	const truncatedReason = value["truncatedReason"];
+	const error = value["error"];
+	const globs = value["globs"];
+	const context = value["context"];
+	return (
+		typeof value["inlineRules"] === "string" &&
+		Array.isArray(value["paths"]) &&
+		value["paths"].every((item) => typeof item === "string") &&
+		(globs === undefined || (Array.isArray(globs) && globs.every((item) => typeof item === "string"))) &&
+		(context === undefined || typeof context === "number") &&
+		typeof value["includeMetadata"] === "boolean" &&
+		isCliMatchArray(value["matches"]) &&
+		typeof value["totalMatches"] === "number" &&
+		typeof value["truncated"] === "boolean" &&
+		(truncatedReason === undefined || isTruncationReason(truncatedReason)) &&
+		(error === undefined || typeof error === "string")
 	);
 }
 
@@ -427,6 +484,18 @@ function formatTestBadges(args: AstGrepTestCallArgs | undefined, theme: Theme): 
 	if (args?.code) {
 		const lineCount = args.code.length === 0 ? 0 : args.code.split("\n").length;
 		badges += theme.fg("dim", ` [${lineCount} lines]`);
+	}
+	return badges;
+}
+
+function formatScanBadges(args: AstGrepScanCallArgs | undefined, theme: Theme): string {
+	let badges = "";
+	badges += formatGlobBadge(args?.globs, theme);
+	if (args?.context !== undefined) {
+		badges += theme.fg("dim", ` [context ${args.context}]`);
+	}
+	if (args?.includeMetadata) {
+		badges += theme.fg("dim", " [metadata]");
 	}
 	return badges;
 }
@@ -739,6 +808,33 @@ function formatTestResultText(
 	return `${summary}${formatTruncationBanner(details, theme)}${formatExpandedTestMatches(details.matches, details.totalMatches, theme)}`;
 }
 
+function formatScanResultText(
+	result: AgentToolResult<unknown>,
+	options: ToolRenderResultOptions,
+	theme: Theme,
+	isError: boolean | undefined,
+): string {
+	const details = isScanDetails(result.details) ? result.details : undefined;
+	if (!details) {
+		return formatFallbackResult(result, theme, isError);
+	}
+
+	if (details.error) {
+		return theme.fg("error", `Error: ${truncateMessage(details.error)}`);
+	}
+
+	if (details.totalMatches === 0) {
+		return theme.fg("dim", "No matches found");
+	}
+
+	const groups = groupMatchesByFile(details.matches);
+	const summary = formatMatchSummary(details.totalMatches, groups.length, theme);
+	if (!options.expanded) {
+		return `${summary}${formatTruncationSuffix(details, theme)}${formatCollapsedMatchGroups(groups, theme)}`;
+	}
+	return `${summary}${formatTruncationBanner(details, theme)}${formatExpandedMatches(details.matches, details.totalMatches, theme)}`;
+}
+
 export function renderSearchCall(args: unknown, theme: Theme, context: RenderContext): Text {
 	const text = reuseText(context);
 	const callArgs = getSearchCallArgs(args);
@@ -835,5 +931,29 @@ export function renderTestResult(
 ): Text {
 	const text = reuseText(context);
 	text.setText(formatTestResultText(result, options, theme, context.isError));
+	return text;
+}
+
+export function renderScanCall(args: unknown, theme: Theme, context: RenderContext): Text {
+	const text = reuseText(context);
+	const callArgs = getScanCallArgs(args);
+	const paths = formatPaths(callArgs?.paths);
+	text.setText(
+		theme.fg("toolTitle", theme.bold("ast_grep_scan ")) +
+			theme.fg("accent", "<inline rules>") +
+			theme.fg("toolOutput", ` in ${paths}`) +
+			formatScanBadges(callArgs, theme),
+	);
+	return text;
+}
+
+export function renderScanResult(
+	result: AgentToolResult<unknown>,
+	options: ToolRenderResultOptions,
+	theme: Theme,
+	context: RenderContext,
+): Text {
+	const text = reuseText(context);
+	text.setText(formatScanResultText(result, options, theme, context.isError));
 	return text;
 }

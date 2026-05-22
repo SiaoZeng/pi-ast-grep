@@ -5,12 +5,14 @@ import { describe, expect, it } from "vitest";
 import {
 	renderParseResult,
 	renderReplaceResult,
+	renderScanResult,
 	renderSearchResult,
 	renderTestResult,
 } from "../src/ast-grep/render.js";
 import type {
 	AstGrepParseDetails,
 	AstGrepReplaceDetails,
+	AstGrepScanDetails,
 	AstGrepSearchDetails,
 	AstGrepTestDetails,
 } from "../src/ast-grep/tools.js";
@@ -185,6 +187,35 @@ function makeTestDetails(overrides: Partial<AstGrepTestDetails> = {}): AstGrepTe
 	};
 }
 
+function makeScanDetails(overrides: Partial<AstGrepScanDetails> = {}): AstGrepScanDetails {
+	const matches = [
+		makeCliMatch({
+			file: "src/logger.ts",
+			ruleId: "find-console-log",
+			severity: "warning",
+			message: "avoid console",
+		}),
+		makeCliMatch({
+			file: "src/console.ts",
+			lines: "console.error(message);",
+			text: "console.error(message);",
+			ruleId: "find-console-log",
+			severity: "warning",
+			message: "avoid console",
+		}),
+	];
+
+	return {
+		inlineRules: ["id: find-console-log", "language: typescript", "rule:", "  pattern: console.log($MSG)"].join("\n"),
+		paths: ["src"],
+		includeMetadata: false,
+		matches,
+		totalMatches: matches.length,
+		truncated: false,
+		...overrides,
+	};
+}
+
 describe("renderSearchResult", () => {
 	it("#given matches across files #when collapsed #then shows counts and file preview", () => {
 		// given
@@ -345,6 +376,45 @@ describe("renderParseResult", () => {
 
 		// then
 		expect(output).toContain("Error: bad pattern");
+	});
+});
+
+describe("renderScanResult", () => {
+	it("#given scan matches #when collapsed #then shows match summary and file preview", () => {
+		// given
+		const details = makeScanDetails();
+		const result: AgentToolResult<AstGrepScanDetails> = {
+			content: [{ type: "text", text: "" }],
+			details,
+		};
+
+		// when
+		const output = renderText(
+			renderScanResult(result, { expanded: false, isPartial: false }, testTheme, { lastComponent: undefined }),
+		);
+
+		// then
+		expect(output).toContain("2 matches");
+		expect(output).toContain("2 files");
+		expect(output).toContain("src/logger.ts");
+		expect(output).toContain("src/console.ts");
+	});
+
+	it("#given scan error #when rendering #then keeps the failure visible", () => {
+		// given
+		const details = makeScanDetails({ matches: [], totalMatches: 0, error: "invalid rule" });
+		const result: AgentToolResult<AstGrepScanDetails> = {
+			content: [{ type: "text", text: "" }],
+			details,
+		};
+
+		// when
+		const output = renderText(
+			renderScanResult(result, { expanded: false, isPartial: false }, testTheme, { lastComponent: undefined }),
+		);
+
+		// then
+		expect(output).toContain("Error: invalid rule");
 	});
 });
 

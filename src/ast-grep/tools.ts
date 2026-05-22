@@ -6,7 +6,7 @@ import { Type } from "typebox";
 // specific coding-agent fork (pi-mono vs senpi vs ...).
 const defineTool: typeof DefineToolType = (t) => t;
 
-import { runSg, runSgDebugQuery, runSgTestPattern, runSgTestRule } from "./cli.js";
+import { runSg, runSgDebugQuery, runSgScan, runSgTestPattern, runSgTestRule } from "./cli.js";
 import { CLI_LANGUAGES } from "./languages.js";
 import { getPatternHint } from "./pattern-hints.js";
 import {
@@ -14,6 +14,8 @@ import {
 	renderParseResult,
 	renderReplaceCall,
 	renderReplaceResult,
+	renderScanCall,
+	renderScanResult,
 	renderSearchCall,
 	renderSearchResult,
 	renderTestCall,
@@ -28,6 +30,7 @@ import {
 	type DebugQueryFormat,
 	type RunSgDebugQueryOptions,
 	type RunSgOptions,
+	type RunSgScanOptions,
 	type RunSgTestPatternOptions,
 	type RunSgTestRuleOptions,
 	SG_STRICTNESS_LEVELS,
@@ -97,6 +100,16 @@ const TestParams = Type.Object({
 	rule: Type.Optional(Type.String({ description: "Inline YAML ast-grep rule to validate when mode=rule" })),
 });
 
+const ScanParams = Type.Object({
+	inlineRules: Type.String({ description: "Inline YAML ast-grep rules to execute across repository paths" }),
+	paths: Type.Optional(
+		Type.Array(Type.String(), { description: "Paths to scan (default: current working directory)" }),
+	),
+	globs: Type.Optional(Type.Array(Type.String(), { description: "Include/exclude globs (prefix ! to exclude)" })),
+	context: Type.Optional(Type.Number({ description: "Number of context lines around each match" })),
+	includeMetadata: Type.Optional(Type.Boolean({ description: "Include rule metadata from scan output when present" })),
+});
+
 export interface AstGrepSearchDetails {
 	pattern: string;
 	lang: CliLanguage;
@@ -146,6 +159,19 @@ export interface AstGrepTestDetails {
 	truncatedReason?: SgTruncationReason;
 	error?: string;
 	hint?: string;
+}
+
+export interface AstGrepScanDetails {
+	inlineRules: string;
+	paths: string[];
+	globs?: string[];
+	context?: number;
+	includeMetadata: boolean;
+	matches: SgResult["matches"];
+	totalMatches: number;
+	truncated: boolean;
+	truncatedReason?: SgTruncationReason;
+	error?: string;
 }
 
 export const ast_grep_search = defineTool({
@@ -372,6 +398,54 @@ export const ast_grep_test = defineTool({
 	},
 	renderCall: renderTestCall,
 	renderResult: renderTestResult,
+});
+
+export const ast_grep_scan = defineTool({
+	name: "ast_grep_scan",
+	label: "AST Grep Scan",
+	description:
+		"Run advanced ast-grep inline YAML rules across repository paths using scan mode. " +
+		"Use this for relational or composite structural queries that exceed simple pattern search.",
+	promptSnippet: "Run advanced inline YAML ast-grep rules across repository files.",
+	promptGuidelines: [
+		"Use ast_grep_scan instead of ast_grep_search when the query needs relational or composite YAML rules.",
+		"Prefer validating complex rules with ast_grep_test before broad repository scans.",
+	],
+	parameters: ScanParams,
+	async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+		const paths = params.paths && params.paths.length > 0 ? params.paths : [ctx.cwd];
+		const options: RunSgScanOptions = {
+			inlineRules: params.inlineRules,
+			paths,
+		};
+		if (params.globs !== undefined) options.globs = params.globs;
+		if (params.context !== undefined) options.context = params.context;
+		if (params.includeMetadata !== undefined) options.includeMetadata = params.includeMetadata;
+		const result = await runSgScan(options);
+		const details: AstGrepScanDetails = {
+			inlineRules: params.inlineRules,
+			paths,
+			includeMetadata: params.includeMetadata === true,
+			matches: result.matches,
+			totalMatches: result.totalMatches,
+			truncated: result.truncated,
+		};
+		if (params.globs !== undefined) details.globs = params.globs;
+		if (params.context !== undefined) details.context = params.context;
+		if (result.truncatedReason !== undefined) details.truncatedReason = result.truncatedReason;
+		if (result.error !== undefined) details.error = result.error;
+		const text = result.error
+			? `Error: ${result.error}`
+			: result.matches.length === 0
+				? "No matches found"
+				: formatSearchResult(result);
+		return {
+			content: [{ type: "text", text }],
+			details,
+		};
+	},
+	renderCall: renderScanCall,
+	renderResult: renderScanResult,
 });
 
 export const ast_gparse = defineTool({

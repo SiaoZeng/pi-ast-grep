@@ -10,6 +10,7 @@ import { collectProcessOutputWithTimeout } from "./process-timeout.js";
 import type {
 	RunSgDebugQueryOptions,
 	RunSgOptions,
+	RunSgScanOptions,
 	RunSgTestPatternOptions,
 	RunSgTestRuleOptions,
 	SgDebugQueryResult,
@@ -92,6 +93,24 @@ export function buildSgTestPatternArgs(options: RunSgTestPatternOptions): string
 
 export function buildSgTestRuleArgs(options: RunSgTestRuleOptions): string[] {
 	return ["scan", "--inline-rules", options.rule, "--stdin", "--json=compact"];
+}
+
+export function buildSgScanArgs(options: RunSgScanOptions): string[] {
+	const args = ["scan", "--inline-rules", options.inlineRules, "--json=compact"];
+	if (options.includeMetadata) {
+		args.push("--include-metadata");
+	}
+	if (options.context && options.context > 0) {
+		args.push("-C", String(options.context));
+	}
+	if (options.globs) {
+		for (const glob of options.globs) {
+			args.push("--globs", glob);
+		}
+	}
+	const paths = options.paths && options.paths.length > 0 ? options.paths : ["."];
+	args.push(...paths);
+	return args;
 }
 
 async function spawnSg(cliPath: string, args: string[], timeoutMs: number, stdinText?: string) {
@@ -316,6 +335,69 @@ export async function runSgTestPattern(options: RunSgTestPatternOptions): Promis
 
 export async function runSgTestRule(options: RunSgTestRuleOptions): Promise<SgResult> {
 	return runSgJsonWithStdin(buildSgTestRuleArgs(options), options.code);
+}
+
+export async function runSgScan(options: RunSgScanOptions, hasRetriedDownload = false): Promise<SgResult> {
+	const cliPath = await resolveCliPath();
+	if (!cliPath) {
+		return {
+			matches: [],
+			totalMatches: 0,
+			truncated: false,
+			error: INSTALL_HINT,
+		};
+	}
+
+	try {
+		const output = await spawnSg(cliPath, buildSgScanArgs(options), DEFAULT_TIMEOUT_MS);
+		const stdout = output.stdout.trim();
+		const stderr = output.stderr.trim();
+		if (output.exitCode !== 0 && stdout.length === 0) {
+			if (stderr.includes("No files found")) {
+				return { matches: [], totalMatches: 0, truncated: false };
+			}
+			return {
+				matches: [],
+				totalMatches: 0,
+				truncated: false,
+				error: stderr || `ast-grep exited with code ${output.exitCode}`,
+			};
+		}
+		const result = createSgResultFromStdout(stdout);
+		if (output.exitCode !== 0 && result.error === undefined) {
+			result.error = stderr || `ast-grep exited with code ${output.exitCode}`;
+		}
+		return result;
+	} catch (error) {
+		if (error instanceof SearchTimeoutError) {
+			return {
+				matches: [],
+				totalMatches: 0,
+				truncated: true,
+				truncatedReason: "timeout",
+				error: error.message,
+			};
+		}
+		if (isEnoentError(error)) {
+			const downloadedPath = await ensureAstGrepBinary();
+			if (downloadedPath && !hasRetriedDownload) {
+				return runSgScan(options, true);
+			}
+			return {
+				matches: [],
+				totalMatches: 0,
+				truncated: false,
+				error: AUTO_DOWNLOAD_FAILED_HINT,
+			};
+		}
+		const errorMessage = error instanceof Error ? error.message : String(error);
+		return {
+			matches: [],
+			totalMatches: 0,
+			truncated: false,
+			error: `Failed to spawn ast-grep: ${errorMessage}`,
+		};
+	}
 }
 
 export { AUTO_DOWNLOAD_FAILED_HINT, INSTALL_HINT };

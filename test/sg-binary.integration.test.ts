@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { findSgCliPathSync } from "../src/ast-grep/binary-path.js";
-import { runSg, runSgDebugQuery, runSgTestPattern, runSgTestRule } from "../src/ast-grep/cli.js";
+import { runSg, runSgDebugQuery, runSgScan, runSgTestPattern, runSgTestRule } from "../src/ast-grep/cli.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -248,5 +248,59 @@ describe("sg binary integration", () => {
 		// then
 		expect(result.error).toContain("Cannot parse rule INLINE_RULES");
 		expect(result.matches).toHaveLength(0);
+	}, 15_000);
+
+	it("#given inline rules and repository paths #when ast_grep_scan runs #then it returns repository matches", async () => {
+		// given
+		const path = findSgCliPathSync();
+		if (!path) {
+			expect.fail("sg binary unavailable; integration test cannot run");
+		}
+		const rule = ["id: find-console-log", "language: typescript", "rule:", "  pattern: console.log($MSG)"].join("\n");
+
+		// when
+		const result = await runSgScan({
+			inlineRules: rule,
+			paths: [FIXTURE_DIR],
+			globs: ["*.ts"],
+		});
+
+		// then
+		expect(result.error).toBeUndefined();
+		expect(result.matches.length).toBeGreaterThanOrEqual(1);
+		expect(result.matches[0]?.file).toContain("sample.ts");
+	}, 15_000);
+
+	it("#given metadata-enabled scan #when ast_grep_scan runs #then metadata fields are preserved", async () => {
+		// given
+		const path = findSgCliPathSync();
+		if (!path) {
+			expect.fail("sg binary unavailable; integration test cannot run");
+		}
+		const rule = [
+			"id: find-console-log",
+			"language: typescript",
+			"message: avoid console log",
+			"severity: warning",
+			"metadata:",
+			"  category: logging",
+			"rule:",
+			"  pattern: console.log($MSG)",
+		].join("\n");
+
+		// when
+		const result = await runSgScan({
+			inlineRules: rule,
+			paths: [FIXTURE_DIR],
+			includeMetadata: true,
+		});
+
+		// then
+		expect(result.error).toBeUndefined();
+		expect(result.matches.length).toBeGreaterThanOrEqual(1);
+		expect(result.matches[0]?.ruleId).toBe("find-console-log");
+		expect(result.matches[0]?.severity).toBe("warning");
+		expect(result.matches[0]?.message).toBe("avoid console log");
+		expect(result.matches[0]?.metadata?.["category"]).toBe("logging");
 	}, 15_000);
 });

@@ -3,12 +3,14 @@ import { describe, expect, it } from "vitest";
 import {
 	buildSgArgs,
 	buildSgDebugQueryArgs,
+	buildSgScanArgs,
 	buildSgTestPatternArgs,
 	buildSgTestRuleArgs,
 } from "../src/ast-grep/cli.js";
 import type {
 	RunSgDebugQueryOptions,
 	RunSgOptions,
+	RunSgScanOptions,
 	RunSgTestPatternOptions,
 	RunSgTestRuleOptions,
 } from "../src/ast-grep/types.js";
@@ -218,5 +220,37 @@ describe("buildSgTestRuleArgs", () => {
 
 		// then
 		expect(args).toEqual(["scan", "--inline-rules", options.rule, "--stdin", "--json=compact"]);
+	});
+});
+
+describe("buildSgScanArgs", () => {
+	it("#given scan options #when building args #then uses inline-rules compact-json path scanning", () => {
+		// given
+		const options: RunSgScanOptions = {
+			inlineRules: ["id: find-console-log", "language: typescript", "rule:", "  pattern: console.log($MSG)"].join(
+				"\n",
+			),
+			paths: ["src"],
+			globs: ["**/*.ts"],
+			context: 2,
+			includeMetadata: true,
+		};
+
+		// when
+		const args = buildSgScanArgs(options);
+
+		// then
+		expect(args).toEqual([
+			"scan",
+			"--inline-rules",
+			options.inlineRules,
+			"--json=compact",
+			"--include-metadata",
+			"-C",
+			"2",
+			"--globs",
+			"**/*.ts",
+			"src",
+		]);
 	});
 });

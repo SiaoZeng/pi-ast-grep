@@ -1,7 +1,7 @@
 import { Type } from "typebox";
 import { describe, expect, it } from "vitest";
 
-import { ast_gparse, ast_grep_replace, ast_grep_search, ast_grep_test } from "../src/ast-grep/tools.js";
+import { ast_gparse, ast_grep_replace, ast_grep_scan, ast_grep_search, ast_grep_test } from "../src/ast-grep/tools.js";
 
 describe("ast_grep_search tool definition", () => {
 	it("#given search tool #when inspecting metadata #then exposes expected name label and description", () => {
@@ -88,6 +88,33 @@ describe("ast_grep_test tool definition", () => {
 		expect(parameters.properties).toHaveProperty("lang");
 		expect(parameters.properties).toHaveProperty("pattern");
 		expect(parameters.properties).toHaveProperty("rule");
+	});
+});
+
+describe("ast_grep_scan tool definition", () => {
+	it("#given scan tool #when inspecting metadata #then exposes expected name label and scan framing", () => {
+		// given / when
+		const tool = ast_grep_scan;
+
+		// then
+		expect(tool.name).toBe("ast_grep_scan");
+		expect(tool.label).toBe("AST Grep Scan");
+		expect(tool.description).toContain("inline YAML");
+	});
+
+	it("#given scan parameters #when inspecting schema #then requires inlineRules only and keeps optional scan controls", () => {
+		// given
+		const objectSchema = Type.Object({});
+		const parameters = ast_grep_scan.parameters;
+
+		// when / then
+		expect(parameters.type).toBe(objectSchema.type);
+		expect(parameters.required).toEqual(["inlineRules"]);
+		expect(parameters.properties).toHaveProperty("inlineRules");
+		expect(parameters.properties).toHaveProperty("paths");
+		expect(parameters.properties).toHaveProperty("globs");
+		expect(parameters.properties).toHaveProperty("context");
+		expect(parameters.properties).toHaveProperty("includeMetadata");
 	});
 });
 

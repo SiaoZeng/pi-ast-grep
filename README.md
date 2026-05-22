@@ -69,9 +69,23 @@ cd ~/.pi/agent/extensions/pi-ast-grep && npm install
 pi -e /path/to/pi-ast-grep/src/index.ts
 ```
 
-After installation, restart pi (or run `/reload` inside an interactive session). All four tools register automatically and become callable by the LLM.
+After installation, restart pi (or run `/reload` inside an interactive session). All five tools register automatically and become callable by the LLM.
 
 ## Tools
+
+### `ast_grep_scan`
+
+Run advanced inline YAML ast-grep rules across repository files.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `inlineRules` | `string` (required) | Inline YAML ast-grep rule text to execute. |
+| `paths` | `string[]` (optional, default `[ctx.cwd]`) | Repository paths to scan. |
+| `globs` | `string[]` (optional) | Include / exclude globs. |
+| `context` | `number` (optional) | Lines of context around matches. |
+| `includeMetadata` | `boolean` (optional, default `false`) | Preserve rule metadata when present. |
+
+Use this when a structural query needs relational/composite YAML rules and simple `ast_grep_search` patterns are no longer sufficient.
 
 ### `ast_grep_test`
 

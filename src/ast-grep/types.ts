@@ -30,6 +30,11 @@ export interface CliMatch {
 	lines: string;
 	charCount: { leading: number; trailing: number };
 	language: string;
+	ruleId?: string;
+	severity?: string;
+	note?: string | null;
+	message?: string;
+	metadata?: Record<string, string | number | boolean | null>;
 }
 
 export type SgTruncationReason = "max_matches" | "max_output_bytes" | "timeout";
@@ -75,4 +80,12 @@ export interface RunSgTestRuleOptions {
 	code: string;
 	rule: string;
 	lang: CliLanguage;
+}
+
+export interface RunSgScanOptions {
+	inlineRules: string;
+	paths?: string[];
+	globs?: string[];
+	context?: number;
+	includeMetadata?: boolean;
 }

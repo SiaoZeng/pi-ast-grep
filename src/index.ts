@@ -2,7 +2,7 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
 import { findSgCliPathSync } from "./ast-grep/binary-path.js";
 import { ensureAstGrepBinary, getCacheDir, getCachedBinaryPath } from "./ast-grep/downloader.js";
-import { ast_gparse, ast_grep_replace, ast_grep_search, ast_grep_test } from "./ast-grep/tools.js";
+import { ast_gparse, ast_grep_replace, ast_grep_scan, ast_grep_search, ast_grep_test } from "./ast-grep/tools.js";
 
 /**
  * pi-ast-grep — AST-aware code search and replace for the pi coding agent.
@@ -17,6 +17,7 @@ import { ast_gparse, ast_grep_replace, ast_grep_search, ast_grep_test } from "./
  *   - ast_grep_replace  — AST pattern replace, sequential when applying
  *   - ast_gparse        — AST/query debug inspection for ast-grep patterns
  *   - ast_grep_test     — validate patterns or inline rules against example code
+ *   - ast_grep_scan     — run advanced inline YAML rules across repository files
  *
  * Commands registered:
  *   - /ast-grep         — show binary path, version, and cache location
@@ -27,6 +28,7 @@ import { ast_gparse, ast_grep_replace, ast_grep_search, ast_grep_test } from "./
 export default function (pi: ExtensionAPI): void {
 	pi.registerTool(ast_gparse);
 	pi.registerTool(ast_grep_test);
+	pi.registerTool(ast_grep_scan);
 	pi.registerTool(ast_grep_search);
 	pi.registerTool(ast_grep_replace);
 

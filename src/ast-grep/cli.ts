@@ -108,7 +108,14 @@ export function buildSgTestRuleArgs(options: RunSgTestRuleOptions): string[] {
 }
 
 export function buildSgScanArgs(options: RunSgScanOptions, jsonStyle: "compact" | "stream" = "compact"): string[] {
-	const args = ["scan", "--inline-rules", options.inlineRules];
+	const args = ["scan"];
+	if (options.inlineRules !== undefined) {
+		args.push("--inline-rules", options.inlineRules);
+	} else if (options.ruleFile !== undefined) {
+		args.push("--rule", options.ruleFile);
+	} else if (options.configPath !== undefined) {
+		args.push("--config", options.configPath);
+	}
 	if (options.resultMode === "files") {
 		args.push("--files-with-matches");
 	} else {

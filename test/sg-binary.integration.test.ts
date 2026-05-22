@@ -1,4 +1,6 @@
-import { dirname, resolve } from "node:path";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
@@ -366,6 +368,69 @@ describe("sg binary integration", () => {
 		expect(result.resultMode).toBe("files");
 		expect(result.matchedFiles).toHaveLength(1);
 		expect(result.matches).toHaveLength(0);
+	}, 15_000);
+
+	it("#given rule file source #when ast_grep_scan runs #then it executes the external rule file", async () => {
+		// given
+		const path = findSgCliPathSync();
+		if (!path) {
+			expect.fail("sg binary unavailable; integration test cannot run");
+		}
+		const tempDir = mkdtempSync(join(tmpdir(), "pi-ast-grep-rule-file-"));
+		const ruleFile = join(tempDir, "find-console-log.yml");
+		writeFileSync(
+			ruleFile,
+			["id: find-console-log", "language: typescript", "rule:", "  pattern: console.log($MSG)"].join("\n"),
+			"utf-8",
+		);
+
+		try {
+			// when
+			const result = await runSgScan({
+				ruleFile,
+				paths: [FIXTURE_DIR],
+			});
+
+			// then
+			expect(result.error).toBeUndefined();
+			expect(result.matches.length).toBeGreaterThanOrEqual(1);
+			expect(result.matches[0]?.ruleId).toBe("find-console-log");
+		} finally {
+			rmSync(tempDir, { recursive: true, force: true });
+		}
+	}, 15_000);
+
+	it("#given sgconfig source #when ast_grep_scan runs #then it executes project rule discovery", async () => {
+		// given
+		const path = findSgCliPathSync();
+		if (!path) {
+			expect.fail("sg binary unavailable; integration test cannot run");
+		}
+		const tempDir = mkdtempSync(join(tmpdir(), "pi-ast-grep-config-"));
+		const rulesDir = join(tempDir, "rules");
+		const fs = await import("node:fs");
+		fs.mkdirSync(rulesDir, { recursive: true });
+		writeFileSync(join(tempDir, "sgconfig.yml"), ["ruleDirs:", "  - rules"].join("\n"), "utf-8");
+		writeFileSync(
+			join(rulesDir, "find-console-log.yml"),
+			["id: find-console-log", "language: typescript", "rule:", "  pattern: console.log($MSG)"].join("\n"),
+			"utf-8",
+		);
+
+		try {
+			// when
+			const result = await runSgScan({
+				configPath: join(tempDir, "sgconfig.yml"),
+				paths: [FIXTURE_DIR],
+			});
+
+			// then
+			expect(result.error).toBeUndefined();
+			expect(result.matches.length).toBeGreaterThanOrEqual(1);
+			expect(result.matches[0]?.ruleId).toBe("find-console-log");
+		} finally {
+			rmSync(tempDir, { recursive: true, force: true });
+		}
 	}, 15_000);
 
 	it("#given metadata-enabled scan #when ast_grep_scan runs #then metadata fields are preserved", async () => {

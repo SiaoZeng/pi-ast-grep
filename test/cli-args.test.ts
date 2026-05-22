@@ -301,4 +301,32 @@ describe("buildSgScanArgs", () => {
 			"src",
 		]);
 	});
+
+	it("#given rule file source #when building scan args #then uses --rule", () => {
+		// given
+		const options: RunSgScanOptions = {
+			ruleFile: "/tmp/rule.yml",
+			paths: ["src"],
+		};
+
+		// when
+		const args = buildSgScanArgs(options);
+
+		// then
+		expect(args).toEqual(["scan", "--rule", "/tmp/rule.yml", "--json=compact", "src"]);
+	});
+
+	it("#given config path source #when building scan args #then uses --config", () => {
+		// given
+		const options: RunSgScanOptions = {
+			configPath: "/tmp/sgconfig.yml",
+			paths: ["src"],
+		};
+
+		// when
+		const args = buildSgScanArgs(options);
+
+		// then
+		expect(args).toEqual(["scan", "--config", "/tmp/sgconfig.yml", "--json=compact", "src"]);
+	});
 });

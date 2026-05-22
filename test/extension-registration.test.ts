@@ -102,15 +102,17 @@ describe("ast_grep_scan tool definition", () => {
 		expect(tool.description).toContain("inline YAML");
 	});
 
-	it("#given scan parameters #when inspecting schema #then requires inlineRules only and keeps optional scan controls", () => {
+	it("#given scan parameters #when inspecting schema #then keeps scan source fields optional and exposes scan controls", () => {
 		// given
 		const objectSchema = Type.Object({});
 		const parameters = ast_grep_scan.parameters;
 
 		// when / then
 		expect(parameters.type).toBe(objectSchema.type);
-		expect(parameters.required).toEqual(["inlineRules"]);
+		expect(parameters.required).toBeUndefined();
 		expect(parameters.properties).toHaveProperty("inlineRules");
+		expect(parameters.properties).toHaveProperty("ruleFile");
+		expect(parameters.properties).toHaveProperty("configPath");
 		expect(parameters.properties).toHaveProperty("paths");
 		expect(parameters.properties).toHaveProperty("globs");
 		expect(parameters.properties).toHaveProperty("context");

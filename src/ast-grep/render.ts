@@ -60,6 +60,8 @@ interface AstGrepTestCallArgs {
 
 interface AstGrepScanCallArgs {
 	inlineRules?: string;
+	ruleFile?: string;
+	configPath?: string;
 	paths?: string[];
 	globs?: string[];
 	context?: number;
@@ -273,6 +275,8 @@ function getScanCallArgs(args: unknown): AstGrepScanCallArgs | undefined {
 
 	const result: AstGrepScanCallArgs = {};
 	const inlineRules = readString(args, "inlineRules");
+	const ruleFile = readString(args, "ruleFile");
+	const configPath = readString(args, "configPath");
 	const paths = readStringArray(args, "paths");
 	const globs = readStringArray(args, "globs");
 	const context = readNumber(args, "context");
@@ -280,6 +284,8 @@ function getScanCallArgs(args: unknown): AstGrepScanCallArgs | undefined {
 	const maxResults = readNumber(args, "maxResults");
 	const resultMode = readString(args, "resultMode");
 	if (inlineRules !== undefined) result.inlineRules = inlineRules;
+	if (ruleFile !== undefined) result.ruleFile = ruleFile;
+	if (configPath !== undefined) result.configPath = configPath;
 	if (paths !== undefined) result.paths = paths;
 	if (globs !== undefined) result.globs = globs;
 	if (context !== undefined) result.context = context;
@@ -394,8 +400,13 @@ function isScanDetails(value: unknown): value is AstGrepScanDetails {
 	const maxResults = value["maxResults"];
 	const matchedFiles = value["matchedFiles"];
 	const resultMode = value["resultMode"];
+	const inlineRules = value["inlineRules"];
+	const ruleFile = value["ruleFile"];
+	const configPath = value["configPath"];
 	return (
-		typeof value["inlineRules"] === "string" &&
+		(inlineRules === undefined || typeof inlineRules === "string") &&
+		(ruleFile === undefined || typeof ruleFile === "string") &&
+		(configPath === undefined || typeof configPath === "string") &&
 		Array.isArray(value["paths"]) &&
 		value["paths"].every((item) => typeof item === "string") &&
 		(globs === undefined || (Array.isArray(globs) && globs.every((item) => typeof item === "string"))) &&
@@ -525,6 +536,12 @@ function formatTestBadges(args: AstGrepTestCallArgs | undefined, theme: Theme): 
 
 function formatScanBadges(args: AstGrepScanCallArgs | undefined, theme: Theme): string {
 	let badges = "";
+	if (args?.ruleFile) {
+		badges += theme.fg("dim", ` [rule-file ${args.ruleFile}]`);
+	}
+	if (args?.configPath) {
+		badges += theme.fg("dim", ` [config ${args.configPath}]`);
+	}
 	badges += formatGlobBadge(args?.globs, theme);
 	if (args?.context !== undefined) {
 		badges += theme.fg("dim", ` [context ${args.context}]`);
@@ -999,9 +1016,16 @@ export function renderScanCall(args: unknown, theme: Theme, context: RenderConte
 	const text = reuseText(context);
 	const callArgs = getScanCallArgs(args);
 	const paths = formatPaths(callArgs?.paths);
+	const label = callArgs?.inlineRules
+		? "<inline rules>"
+		: callArgs?.ruleFile
+			? "<rule file>"
+			: callArgs?.configPath
+				? "<config>"
+				: "<scan>";
 	text.setText(
 		theme.fg("toolTitle", theme.bold("ast_grep_scan ")) +
-			theme.fg("accent", "<inline rules>") +
+			theme.fg("accent", label) +
 			theme.fg("toolOutput", ` in ${paths}`) +
 			formatScanBadges(callArgs, theme),
 	);

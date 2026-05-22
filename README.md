@@ -88,7 +88,9 @@ Run advanced inline YAML ast-grep rules across repository files.
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
-| `inlineRules` | `string` (required) | Inline YAML ast-grep rule text to execute. |
+| `inlineRules` | `string` (optional) | Inline YAML ast-grep rule text to execute. |
+| `ruleFile` | `string` (optional) | Path to a single ast-grep rule file. |
+| `configPath` | `string` (optional) | Path to `sgconfig.yml` for project rule discovery. |
 | `paths` | `string[]` (optional, default `[ctx.cwd]`) | Repository paths to scan. |
 | `globs` | `string[]` (optional) | Include / exclude globs. |
 | `context` | `number` (optional) | Lines of context around matches. |
@@ -96,7 +98,7 @@ Run advanced inline YAML ast-grep rules across repository files.
 | `maxResults` | `number` (optional) | Maximum number of results to return. |
 | `resultMode` | `"matches" | "files"` (optional, default `"matches"`) | Return full matches or only matched files. |
 
-Use this when a structural query needs relational/composite YAML rules and simple `ast_grep_search` patterns are no longer sufficient.
+Use this when a structural query needs relational/composite YAML rules and simple `ast_grep_search` patterns are no longer sufficient. Provide exactly one scan source: `inlineRules`, `ruleFile`, or `configPath`.
 
 ### `ast_grep_test`
 

@@ -91,7 +91,9 @@ export interface RunSgTestRuleOptions {
 }
 
 export interface RunSgScanOptions {
-	inlineRules: string;
+	inlineRules?: string;
+	ruleFile?: string;
+	configPath?: string;
 	paths?: string[];
 	globs?: string[];
 	context?: number;

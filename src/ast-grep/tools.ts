@@ -105,7 +105,11 @@ const TestParams = Type.Object({
 });
 
 const ScanParams = Type.Object({
-	inlineRules: Type.String({ description: "Inline YAML ast-grep rules to execute across repository paths" }),
+	inlineRules: Type.Optional(
+		Type.String({ description: "Inline YAML ast-grep rules to execute across repository paths" }),
+	),
+	ruleFile: Type.Optional(Type.String({ description: "Path to a single ast-grep rule file" })),
+	configPath: Type.Optional(Type.String({ description: "Path to sgconfig.yml for project rule discovery" })),
 	paths: Type.Optional(
 		Type.Array(Type.String(), { description: "Paths to scan (default: current working directory)" }),
 	),
@@ -171,7 +175,9 @@ export interface AstGrepTestDetails {
 }
 
 export interface AstGrepScanDetails {
-	inlineRules: string;
+	inlineRules?: string;
+	ruleFile?: string;
+	configPath?: string;
 	paths: string[];
 	globs?: string[];
 	context?: number;
@@ -421,20 +427,39 @@ export const ast_grep_scan = defineTool({
 	name: "ast_grep_scan",
 	label: "AST Grep Scan",
 	description:
-		"Run advanced ast-grep inline YAML rules across repository paths using scan mode. " +
+		"Run advanced ast-grep rules across repository paths using inline YAML, a rule file, or a project config. " +
 		"Use this for relational or composite structural queries that exceed simple pattern search.",
-	promptSnippet: "Run advanced inline YAML ast-grep rules across repository files.",
+	promptSnippet: "Run advanced ast-grep rules across repository files using inline YAML, rule files, or sgconfig.",
 	promptGuidelines: [
 		"Use ast_grep_scan instead of ast_grep_search when the query needs relational or composite YAML rules.",
 		"Prefer validating complex rules with ast_grep_test before broad repository scans.",
+		"Provide exactly one scan source: inlineRules, ruleFile, or configPath.",
 	],
 	parameters: ScanParams,
 	async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+		const sourceCount = [params.inlineRules, params.ruleFile, params.configPath].filter(
+			(value) => typeof value === "string" && value.length > 0,
+		).length;
+		if (sourceCount !== 1) {
+			return {
+				content: [{ type: "text", text: "Error: exactly one of inlineRules, ruleFile, or configPath is required" }],
+				details: {
+					paths: params.paths && params.paths.length > 0 ? params.paths : [ctx.cwd],
+					includeMetadata: params.includeMetadata === true,
+					resultMode: params.resultMode ?? "matches",
+					matches: [],
+					totalMatches: 0,
+					truncated: false,
+					error: "exactly one of inlineRules, ruleFile, or configPath is required",
+				} satisfies AstGrepScanDetails,
+			};
+		}
+
 		const paths = params.paths && params.paths.length > 0 ? params.paths : [ctx.cwd];
-		const options: RunSgScanOptions = {
-			inlineRules: params.inlineRules,
-			paths,
-		};
+		const options: RunSgScanOptions = { paths };
+		if (params.inlineRules !== undefined) options.inlineRules = params.inlineRules;
+		if (params.ruleFile !== undefined) options.ruleFile = params.ruleFile;
+		if (params.configPath !== undefined) options.configPath = params.configPath;
 		if (params.globs !== undefined) options.globs = params.globs;
 		if (params.context !== undefined) options.context = params.context;
 		if (params.includeMetadata !== undefined) options.includeMetadata = params.includeMetadata;
@@ -442,7 +467,6 @@ export const ast_grep_scan = defineTool({
 		if (params.resultMode !== undefined) options.resultMode = params.resultMode;
 		const result = await runSgScan(options);
 		const details: AstGrepScanDetails = {
-			inlineRules: params.inlineRules,
 			paths,
 			includeMetadata: params.includeMetadata === true,
 			resultMode: result.resultMode ?? params.resultMode ?? "matches",
@@ -450,6 +474,9 @@ export const ast_grep_scan = defineTool({
 			totalMatches: result.totalMatches,
 			truncated: result.truncated,
 		};
+		if (params.inlineRules !== undefined) details.inlineRules = params.inlineRules;
+		if (params.ruleFile !== undefined) details.ruleFile = params.ruleFile;
+		if (params.configPath !== undefined) details.configPath = params.configPath;
 		if (params.globs !== undefined) details.globs = params.globs;
 		if (params.context !== undefined) details.context = params.context;
 		if (params.maxResults !== undefined) details.maxResults = params.maxResults;
@@ -458,7 +485,7 @@ export const ast_grep_scan = defineTool({
 		if (result.error !== undefined) details.error = result.error;
 		const text = result.error
 			? `Error: ${result.error}`
-			: result.matches.length === 0
+			: result.totalMatches === 0
 				? "No matches found"
 				: formatSearchResult(result);
 		return {

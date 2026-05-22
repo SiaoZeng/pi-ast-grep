@@ -69,7 +69,16 @@ cd ~/.pi/agent/extensions/pi-ast-grep && npm install
 pi -e /path/to/pi-ast-grep/src/index.ts
 ```
 
-After installation, restart pi (or run `/reload` inside an interactive session). All five tools register automatically and become callable by the LLM.
+After installation, restart pi (or run `/reload` inside an interactive session). All five tools register automatically and become callable by the LLM. The package also ships a bundled skill and prompt template for the ast-grep workflow.
+
+## Guidance Layer
+
+The package includes:
+
+- skill: `ast-grep-guidance`
+- prompt template: `/ast-grep-workflow`
+
+Use the skill when the model needs help choosing between parse, test, search, scan, and replace. Use the prompt template when you want to force the workflow explicitly in a session.
 
 ## Tools
 

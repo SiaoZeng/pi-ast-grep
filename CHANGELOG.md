@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- bundled guidance resources: the `ast-grep-guidance` skill and `/ast-grep-workflow` prompt template for parse → test → search/scan → replace flows.
 - `ast_grep_scan`, an advanced repository scan tool for running inline YAML ast-grep rules across project files.
 - `ast_grep_test`, a validation tool for checking simple patterns or inline YAML rules against explicit example code before repository-wide search.
 - `ast_gparse`, a pi-native wrapper around `sg run --debug-query`, for inspecting how ast-grep parses structural query patterns before broader searches.

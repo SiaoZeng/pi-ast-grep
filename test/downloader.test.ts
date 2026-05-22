@@ -2,7 +2,13 @@ import { join } from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { DEFAULT_AST_GREP_VERSION, getBinaryName, getCacheDir, PLATFORM_MAP } from "../src/ast-grep/downloader.js";
+import {
+	DEFAULT_AST_GREP_VERSION,
+	getBinaryName,
+	getCacheDir,
+	isVersionOutputCompatible,
+	PLATFORM_MAP,
+} from "../src/ast-grep/downloader.js";
 
 const originalXdgCacheHome = process.env["XDG_CACHE_HOME"];
 
@@ -61,6 +67,12 @@ describe("downloader helpers", () => {
 
 	it("#given default version #when inspecting downloader constant #then matches ast grep cli version", () => {
 		// given / when / then
-		expect(DEFAULT_AST_GREP_VERSION).toBe("0.41.1");
+		expect(DEFAULT_AST_GREP_VERSION).toBe("0.42.3");
+	});
+
+	it("#given version output #when validating compatibility #then matches expected version exactly", () => {
+		// given / when / then
+		expect(isVersionOutputCompatible("ast-grep 0.42.3", "0.42.3")).toBe(true);
+		expect(isVersionOutputCompatible("ast-grep 0.42.2", "0.42.3")).toBe(false);
 	});
 });

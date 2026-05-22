@@ -208,11 +208,11 @@ If a configured path is invalid, the extension surfaces an explicit configuratio
 3. **Platform-specific npm package** — `@ast-grep/cli-{platform}-{arch}-{libc}` (`darwin-arm64`, `darwin-x64`, `linux-arm64`, `linux-x64`, `win32-x64`, `win32-arm64`, `win32-ia32`).
 4. **`PATH`** — any `sg` (or `sg.exe`) on the system PATH.
 5. **Homebrew** — `/opt/homebrew/bin/sg`, `/usr/local/bin/sg` on macOS.
-6. **GitHub release auto-download** (last resort) — pulls `app-{arch}-{os}.zip` from `https://github.com/ast-grep/ast-grep/releases/download/<version>/...` and extracts to the cache directory. The version comes from the `@ast-grep/cli` package.json when present, otherwise `0.41.1`.
+6. **GitHub release auto-download** (last resort) — pulls `app-{arch}-{os}.zip` from `https://github.com/ast-grep/ast-grep/releases/download/<version>/...` and extracts to the cache directory. The version comes from the `@ast-grep/cli` package.json when present, otherwise `0.42.3`.
 
 ### Trust model
 
-Auto-download fetches release assets over HTTPS. There is **no checksum verification beyond TLS**. If your security posture requires reproducible binary provenance, install `sg` manually and disable auto-download with `PI_OFFLINE=1`.
+Auto-download fetches release assets over HTTPS and now verifies the downloaded binary's `--version` output against the expected ast-grep version. This is stronger than TLS-only transport trust, but it is still **not equivalent to cryptographic checksum verification**. If your security posture requires reproducible binary provenance, install `sg` manually and disable auto-download with `PI_OFFLINE=1`.
 
 ### Offline / locked-down networks
 

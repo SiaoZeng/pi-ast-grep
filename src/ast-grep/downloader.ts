@@ -1,4 +1,5 @@
-import { existsSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { existsSync, rmSync } from "node:fs";
 import { createRequire } from "node:module";
 import { homedir } from "node:os";
 import { join } from "node:path";
@@ -14,7 +15,7 @@ import {
 
 const REPO = "ast-grep/ast-grep";
 const CACHE_DIR_NAME = "pi-ast-grep";
-const DEFAULT_VERSION = "0.41.1";
+const DEFAULT_VERSION = "0.42.3";
 
 interface PlatformInfo {
 	arch: string;
@@ -43,6 +44,20 @@ function getAstGrepVersion(): string {
 
 function isPackageWithVersion(value: unknown): value is { version: string } {
 	return typeof value === "object" && value !== null && "version" in value && typeof value.version === "string";
+}
+
+export function isVersionOutputCompatible(output: string, expectedVersion: string): boolean {
+	const normalized = output.trim();
+	return normalized.startsWith("ast-grep ") && normalized.includes(expectedVersion);
+}
+
+function validateDownloadedBinaryVersion(binaryPath: string, expectedVersion: string): boolean {
+	const result = spawnSync(binaryPath, ["--version"], {
+		encoding: "utf-8",
+		stdio: ["ignore", "pipe", "pipe"],
+	});
+	const combined = `${result.stdout ?? ""}\n${result.stderr ?? ""}`;
+	return result.status === 0 && isVersionOutputCompatible(combined, expectedVersion);
 }
 
 export function getCacheDir(): string {
@@ -97,7 +112,15 @@ export async function downloadAstGrep(version: string = DEFAULT_VERSION): Promis
 		cleanupArchive(archivePath);
 		ensureExecutable(binaryPath);
 
-		return existsSync(binaryPath) ? binaryPath : null;
+		if (!existsSync(binaryPath)) {
+			return null;
+		}
+		if (!validateDownloadedBinaryVersion(binaryPath, version)) {
+			rmSync(binaryPath, { force: true });
+			return null;
+		}
+
+		return binaryPath;
 	} catch {
 		return null;
 	}

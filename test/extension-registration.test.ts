@@ -1,7 +1,7 @@
 import { Type } from "typebox";
 import { describe, expect, it } from "vitest";
 
-import { ast_gparse, ast_grep_replace, ast_grep_search } from "../src/ast-grep/tools.js";
+import { ast_gparse, ast_grep_replace, ast_grep_search, ast_grep_test } from "../src/ast-grep/tools.js";
 
 describe("ast_grep_search tool definition", () => {
 	it("#given search tool #when inspecting metadata #then exposes expected name label and description", () => {
@@ -61,6 +61,33 @@ describe("ast_grep_replace tool definition", () => {
 		expect(parameters.required).not.toContain("paths");
 		expect(parameters.required).not.toContain("globs");
 		expect(parameters.required).not.toContain("dryRun");
+	});
+});
+
+describe("ast_grep_test tool definition", () => {
+	it("#given test tool #when inspecting metadata #then exposes expected name label and validation framing", () => {
+		// given / when
+		const tool = ast_grep_test;
+
+		// then
+		expect(tool.name).toBe("ast_grep_test");
+		expect(tool.label).toBe("AST Grep Test");
+		expect(tool.description).toContain("Validate");
+	});
+
+	it("#given test parameters #when inspecting schema #then requires mode code and lang with optional pattern or rule", () => {
+		// given
+		const objectSchema = Type.Object({});
+		const parameters = ast_grep_test.parameters;
+
+		// when / then
+		expect(parameters.type).toBe(objectSchema.type);
+		expect(parameters.required).toEqual(["mode", "code", "lang"]);
+		expect(parameters.properties).toHaveProperty("mode");
+		expect(parameters.properties).toHaveProperty("code");
+		expect(parameters.properties).toHaveProperty("lang");
+		expect(parameters.properties).toHaveProperty("pattern");
+		expect(parameters.properties).toHaveProperty("rule");
 	});
 });
 

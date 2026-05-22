@@ -6,7 +6,7 @@ import { Type } from "typebox";
 // specific coding-agent fork (pi-mono vs senpi vs ...).
 const defineTool: typeof DefineToolType = (t) => t;
 
-import { runSg, runSgDebugQuery } from "./cli.js";
+import { runSg, runSgDebugQuery, runSgTestPattern, runSgTestRule } from "./cli.js";
 import { CLI_LANGUAGES } from "./languages.js";
 import { getPatternHint } from "./pattern-hints.js";
 import {
@@ -16,14 +16,20 @@ import {
 	renderReplaceResult,
 	renderSearchCall,
 	renderSearchResult,
+	renderTestCall,
+	renderTestResult,
 } from "./render.js";
 import { formatReplaceResult, formatSearchResult } from "./result-formatter.js";
 import {
+	AST_GREP_TEST_MODES,
+	type AstGrepTestMode,
 	type CliLanguage,
 	DEBUG_QUERY_FORMATS,
 	type DebugQueryFormat,
 	type RunSgDebugQueryOptions,
 	type RunSgOptions,
+	type RunSgTestPatternOptions,
+	type RunSgTestRuleOptions,
 	SG_STRICTNESS_LEVELS,
 	type SgResult,
 	type SgStrictness,
@@ -83,6 +89,14 @@ const ParseParams = Type.Object({
 	),
 });
 
+const TestParams = Type.Object({
+	mode: StringEnum(AST_GREP_TEST_MODES, { description: "Validation mode: simple pattern or inline YAML rule" }),
+	code: Type.String({ description: "Example source code to validate against" }),
+	lang: StringEnum(CLI_LANGUAGES, { description: "Target language for example code and pattern mode" }),
+	pattern: Type.Optional(Type.String({ description: "AST pattern to validate when mode=pattern" })),
+	rule: Type.Optional(Type.String({ description: "Inline YAML ast-grep rule to validate when mode=rule" })),
+});
+
 export interface AstGrepSearchDetails {
 	pattern: string;
 	lang: CliLanguage;
@@ -118,6 +132,20 @@ export interface AstGrepParseDetails {
 	strictness?: SgStrictness;
 	output: string;
 	error?: string;
+}
+
+export interface AstGrepTestDetails {
+	mode: AstGrepTestMode;
+	codeLineCount: number;
+	lang: CliLanguage;
+	pattern?: string;
+	rule?: string;
+	matches: SgResult["matches"];
+	totalMatches: number;
+	truncated: boolean;
+	truncatedReason?: SgTruncationReason;
+	error?: string;
+	hint?: string;
 }
 
 export const ast_grep_search = defineTool({
@@ -233,6 +261,117 @@ export const ast_grep_replace = defineTool({
 	},
 	renderCall: renderReplaceCall,
 	renderResult: renderReplaceResult,
+});
+
+export const ast_grep_test = defineTool({
+	name: "ast_grep_test",
+	label: "AST Grep Test",
+	description:
+		"Validate an ast-grep pattern or inline YAML rule against explicit example code before repository-wide search. " +
+		"Use mode=pattern for simple patterns and mode=rule for inline ast-grep YAML rules.",
+	promptSnippet: "Validate a structural query against example code before broad search or replace.",
+	promptGuidelines: [
+		"Use ast_grep_test after ast_gparse when a structural query is still uncertain.",
+		"Use mode=pattern for simple ast-grep patterns and mode=rule for relational or composite YAML rules.",
+		"Prefer ast_grep_test before repository-wide ast_grep_search or later ast_grep_scan calls.",
+	],
+	parameters: TestParams,
+	async execute(_toolCallId, params) {
+		if (!isCliLanguage(params.lang)) {
+			return invalidLanguageResult(params.lang);
+		}
+
+		const codeLineCount = params.code.length === 0 ? 0 : params.code.split("\n").length;
+
+		if (params.mode === "pattern") {
+			if (!params.pattern) {
+				return {
+					content: [{ type: "text", text: "Error: pattern is required when mode=pattern" }],
+					details: {
+						mode: params.mode,
+						codeLineCount,
+						lang: params.lang,
+						matches: [],
+						totalMatches: 0,
+						truncated: false,
+						error: "pattern is required when mode=pattern",
+					} satisfies AstGrepTestDetails,
+				};
+			}
+
+			const options: RunSgTestPatternOptions = {
+				code: params.code,
+				pattern: params.pattern,
+				lang: params.lang,
+			};
+			const result = await runSgTestPattern(options);
+			const hint =
+				result.matches.length === 0 && !result.error
+					? (getPatternHint(params.pattern, params.lang) ?? undefined)
+					: undefined;
+			const details: AstGrepTestDetails = {
+				mode: params.mode,
+				codeLineCount,
+				lang: params.lang,
+				pattern: params.pattern,
+				matches: result.matches,
+				totalMatches: result.totalMatches,
+				truncated: result.truncated,
+			};
+			if (result.truncatedReason !== undefined) details.truncatedReason = result.truncatedReason;
+			if (result.error !== undefined) details.error = result.error;
+			if (hint !== undefined) details.hint = hint;
+			const text = result.error
+				? `Error: ${result.error}`
+				: result.matches.length === 0
+					? hint
+						? `No matches found in example code\n\n${hint}`
+						: "No matches found in example code"
+					: formatSearchResult(result);
+			return { content: [{ type: "text", text }], details };
+		}
+
+		if (!params.rule) {
+			return {
+				content: [{ type: "text", text: "Error: rule is required when mode=rule" }],
+				details: {
+					mode: params.mode,
+					codeLineCount,
+					lang: params.lang,
+					matches: [],
+					totalMatches: 0,
+					truncated: false,
+					error: "rule is required when mode=rule",
+				} satisfies AstGrepTestDetails,
+			};
+		}
+
+		const options: RunSgTestRuleOptions = {
+			code: params.code,
+			rule: params.rule,
+			lang: params.lang,
+		};
+		const result = await runSgTestRule(options);
+		const details: AstGrepTestDetails = {
+			mode: params.mode,
+			codeLineCount,
+			lang: params.lang,
+			rule: params.rule,
+			matches: result.matches,
+			totalMatches: result.totalMatches,
+			truncated: result.truncated,
+		};
+		if (result.truncatedReason !== undefined) details.truncatedReason = result.truncatedReason;
+		if (result.error !== undefined) details.error = result.error;
+		const text = result.error
+			? `Error: ${result.error}`
+			: result.matches.length === 0
+				? "No matches found in example code"
+				: formatSearchResult(result);
+		return { content: [{ type: "text", text }], details };
+	},
+	renderCall: renderTestCall,
+	renderResult: renderTestResult,
 });
 
 export const ast_gparse = defineTool({

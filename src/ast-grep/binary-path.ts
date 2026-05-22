@@ -62,7 +62,7 @@ export function getConfiguredSgCliPathError(): string | null {
 	return null;
 }
 
-function findOnPath(binaryName: string): string | null {
+export function findBinaryOnPath(binaryNames: string[]): string | null {
 	const isWindows = process.platform === "win32";
 	const pathEnv = process.env["PATH"] ?? (isWindows ? (process.env["Path"] ?? "") : "");
 	if (!pathEnv) return null;
@@ -70,10 +70,12 @@ function findOnPath(binaryName: string): string | null {
 	const exts = isWindows ? ["", ".exe"] : [""];
 
 	for (const dir of pathEnv.split(delimiter)) {
-		for (const suffix of exts) {
-			const candidate = join(dir, binaryName + suffix);
-			if (existsSync(candidate) && isValidBinary(candidate)) {
-				return candidate;
+		for (const binaryName of binaryNames) {
+			for (const suffix of exts) {
+				const candidate = join(dir, binaryName + suffix);
+				if (existsSync(candidate) && isValidBinary(candidate)) {
+					return candidate;
+				}
 			}
 		}
 	}
@@ -81,7 +83,7 @@ function findOnPath(binaryName: string): string | null {
 }
 
 export function findSgCliPathSync(): string | null {
-	const binaryName = process.platform === "win32" ? "sg.exe" : "sg";
+	const packageBinaryName = process.platform === "win32" ? "sg.exe" : "sg";
 
 	const configuredPath = getConfiguredSgCliPathOverride();
 	if (configuredPath) {
@@ -97,7 +99,7 @@ export function findSgCliPathSync(): string | null {
 		const require = createRequire(import.meta.url);
 		const cliPackageJsonPath = require.resolve("@ast-grep/cli/package.json");
 		const cliDirectory = dirname(cliPackageJsonPath);
-		const sgPath = join(cliDirectory, binaryName);
+		const sgPath = join(cliDirectory, packageBinaryName);
 
 		if (existsSync(sgPath) && isValidBinary(sgPath)) {
 			return sgPath;
@@ -119,11 +121,16 @@ export function findSgCliPathSync(): string | null {
 		} catch {}
 	}
 
-	const onPath = findOnPath(binaryName);
+	const onPath = findBinaryOnPath(["sg", "ast-grep"]);
 	if (onPath) return onPath;
 
 	if (process.platform === "darwin") {
-		for (const path of ["/opt/homebrew/bin/sg", "/usr/local/bin/sg"]) {
+		for (const path of [
+			"/opt/homebrew/bin/sg",
+			"/usr/local/bin/sg",
+			"/opt/homebrew/bin/ast-grep",
+			"/usr/local/bin/ast-grep",
+		]) {
 			if (existsSync(path) && isValidBinary(path)) {
 				return path;
 			}

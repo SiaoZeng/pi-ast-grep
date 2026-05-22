@@ -1,6 +1,10 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
-import { findSgCliPathSync } from "./ast-grep/binary-path.js";
+import {
+	findSgCliPathSync,
+	getConfiguredSgCliPathError,
+	getConfiguredSgCliPathOverride,
+} from "./ast-grep/binary-path.js";
 import { ensureAstGrepBinary, getCacheDir, getCachedBinaryPath } from "./ast-grep/downloader.js";
 import { ast_gparse, ast_grep_replace, ast_grep_scan, ast_grep_search, ast_grep_test } from "./ast-grep/tools.js";
 
@@ -40,6 +44,8 @@ export default function (pi: ExtensionAPI): void {
 
 			const cachedPath = getCachedBinaryPath();
 			const localPath = findSgCliPathSync();
+			const configuredPath = getConfiguredSgCliPathOverride();
+			const configuredPathError = getConfiguredSgCliPathError();
 			const cacheDir = getCacheDir();
 
 			if (wantsInstall) {
@@ -59,9 +65,11 @@ export default function (pi: ExtensionAPI): void {
 
 			const lines = [
 				"pi-ast-grep",
-				`  Cache dir : ${cacheDir}`,
-				`  Cached sg : ${cachedPath ?? "not downloaded"}`,
-				`  Local sg  : ${localPath ?? "not on PATH"}`,
+				`  Cache dir      : ${cacheDir}`,
+				`  Configured sg  : ${configuredPath ?? "not configured"}`,
+				`  Config error   : ${configuredPathError ?? "none"}`,
+				`  Cached sg      : ${cachedPath ?? "not downloaded"}`,
+				`  Local sg       : ${localPath ?? "not on PATH"}`,
 			].join("\n");
 			ctx.ui.notify(lines, "info");
 		},

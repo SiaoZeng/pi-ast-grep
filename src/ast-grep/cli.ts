@@ -1,7 +1,7 @@
 import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 
-import { getAstGrepPath, getSgCliPath } from "./binary-path.js";
+import { getAstGrepPath, getConfiguredSgCliPathError, getSgCliPath } from "./binary-path.js";
 import { ensureAstGrepBinary } from "./downloader.js";
 import { SearchTimeoutError } from "./errors.js";
 import {
@@ -163,6 +163,11 @@ function createSgResultFromMode(stdout: string, resultMode: "matches" | "files",
 }
 
 async function resolveCliPath(): Promise<string | null> {
+	const configuredPathError = getConfiguredSgCliPathError();
+	if (configuredPathError) {
+		return null;
+	}
+
 	let cliPath = getSgCliPath();
 
 	if (!cliPath || !existsSync(cliPath)) {
@@ -175,6 +180,10 @@ async function resolveCliPath(): Promise<string | null> {
 	}
 
 	return cliPath;
+}
+
+function resolveInstallOrConfigError(): string {
+	return getConfiguredSgCliPathError() ?? INSTALL_HINT;
 }
 
 export async function runSg(options: RunSgOptions, hasRetriedDownload = false): Promise<SgResult> {
@@ -191,7 +200,7 @@ export async function runSg(options: RunSgOptions, hasRetriedDownload = false): 
 			matches: [],
 			totalMatches: 0,
 			truncated: false,
-			error: INSTALL_HINT,
+			error: resolveInstallOrConfigError(),
 		};
 	}
 
@@ -277,7 +286,7 @@ export async function runSgDebugQuery(
 	const args = buildSgDebugQueryArgs(options);
 	const cliPath = await resolveCliPath();
 	if (!cliPath) {
-		return { output: "", error: INSTALL_HINT };
+		return { output: "", error: resolveInstallOrConfigError() };
 	}
 
 	try {
@@ -317,7 +326,7 @@ async function runSgJsonWithStdin(args: string[], code: string, hasRetriedDownlo
 			matches: [],
 			totalMatches: 0,
 			truncated: false,
-			error: INSTALL_HINT,
+			error: resolveInstallOrConfigError(),
 		};
 	}
 
@@ -385,7 +394,7 @@ export async function runSgScan(options: RunSgScanOptions, hasRetriedDownload = 
 			matches: [],
 			totalMatches: 0,
 			truncated: false,
-			error: INSTALL_HINT,
+			error: resolveInstallOrConfigError(),
 		};
 	}
 

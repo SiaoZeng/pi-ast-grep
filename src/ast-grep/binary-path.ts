@@ -7,6 +7,7 @@ import { ensureAstGrepBinary, getCachedBinaryPath } from "./downloader.js";
 type SupportedPlatform = "darwin" | "linux" | "win32";
 
 const MIN_BINARY_SIZE_BYTES = 10_000;
+const CONFIGURED_PATH_ENV_VARS = ["PI_AST_GREP_PATH", "AST_GREP_BIN"] as const;
 
 function isValidBinary(filePath: string): boolean {
 	try {
@@ -37,6 +38,30 @@ function isSupportedPlatform(platform: NodeJS.Platform): platform is SupportedPl
 	return platform === "darwin" || platform === "linux" || platform === "win32";
 }
 
+export function getConfiguredSgCliPathOverride(): string | null {
+	for (const envName of CONFIGURED_PATH_ENV_VARS) {
+		const value = process.env[envName];
+		if (typeof value === "string" && value.trim().length > 0) {
+			return value.trim();
+		}
+	}
+	return null;
+}
+
+export function getConfiguredSgCliPathError(): string | null {
+	const configuredPath = getConfiguredSgCliPathOverride();
+	if (!configuredPath) {
+		return null;
+	}
+	if (!existsSync(configuredPath)) {
+		return `Configured ast-grep path does not exist: ${configuredPath}`;
+	}
+	if (!isValidBinary(configuredPath)) {
+		return `Configured ast-grep path is not a valid sg binary: ${configuredPath}`;
+	}
+	return null;
+}
+
 function findOnPath(binaryName: string): string | null {
 	const isWindows = process.platform === "win32";
 	const pathEnv = process.env["PATH"] ?? (isWindows ? (process.env["Path"] ?? "") : "");
@@ -57,6 +82,11 @@ function findOnPath(binaryName: string): string | null {
 
 export function findSgCliPathSync(): string | null {
 	const binaryName = process.platform === "win32" ? "sg.exe" : "sg";
+
+	const configuredPath = getConfiguredSgCliPathOverride();
+	if (configuredPath) {
+		return getConfiguredSgCliPathError() === null ? configuredPath : null;
+	}
 
 	const cachedPath = getCachedBinaryPath();
 	if (cachedPath && isValidBinary(cachedPath)) {

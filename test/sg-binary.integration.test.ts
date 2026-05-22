@@ -1,7 +1,7 @@
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 
 import { findSgCliPathSync } from "../src/ast-grep/binary-path.js";
 import { runSg, runSgDebugQuery, runSgScan, runSgTestPattern, runSgTestRule } from "../src/ast-grep/cli.js";
@@ -12,6 +12,7 @@ const FIXTURE_DIR = resolve(__dirname, "fixtures/sg-project");
 const TS_FIXTURE = resolve(FIXTURE_DIR, "sample.ts");
 
 const previousOffline = process.env["PI_OFFLINE"];
+const previousConfiguredPath = process.env["PI_AST_GREP_PATH"];
 
 describe("sg binary integration", () => {
 	beforeAll(() => {
@@ -20,12 +21,40 @@ describe("sg binary integration", () => {
 		delete process.env["PI_OFFLINE"];
 	});
 
+	afterEach(() => {
+		if (previousConfiguredPath === undefined) {
+			delete process.env["PI_AST_GREP_PATH"];
+		} else {
+			process.env["PI_AST_GREP_PATH"] = previousConfiguredPath;
+		}
+	});
+
 	afterAll(() => {
 		if (previousOffline === undefined) {
 			delete process.env["PI_OFFLINE"];
 		} else {
 			process.env["PI_OFFLINE"] = previousOffline;
 		}
+		if (previousConfiguredPath === undefined) {
+			delete process.env["PI_AST_GREP_PATH"];
+		} else {
+			process.env["PI_AST_GREP_PATH"] = previousConfiguredPath;
+		}
+	});
+
+	it("#given invalid configured binary path #when running search #then it surfaces configuration error", async () => {
+		// given
+		process.env["PI_AST_GREP_PATH"] = "/definitely/not/a/real/sg";
+
+		// when
+		const result = await runSg({
+			pattern: "console.log($MSG)",
+			lang: "typescript",
+			paths: [TS_FIXTURE],
+		});
+
+		// then
+		expect(result.error).toContain("Configured ast-grep path does not exist");
 	});
 
 	it("#given a resolvable sg binary #when checking #then it is present", () => {

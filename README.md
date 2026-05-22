@@ -184,6 +184,23 @@ When you genuinely want text search, use the built-in `grep` tool instead.
 
 ## Binary Management
 
+### Configurable binary path
+
+You can force a specific ast-grep binary path with:
+
+```bash
+export PI_AST_GREP_PATH=/absolute/path/to/sg
+```
+
+Alias accepted for compatibility:
+
+```bash
+export AST_GREP_BIN=/absolute/path/to/sg
+```
+
+If a configured path is invalid, the extension surfaces an explicit configuration error instead of silently falling back.
+
+
 `pi-ast-grep` resolves the `sg` binary in this order:
 
 1. **Cached download** — `$XDG_CACHE_HOME/pi-ast-grep/bin/sg` on Unix, `%LOCALAPPDATA%\pi-ast-grep\bin\sg.exe` on Windows. Validated by existence and `>10000` byte size.

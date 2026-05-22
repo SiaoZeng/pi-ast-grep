@@ -117,4 +117,23 @@ describe("formatReplaceResult", () => {
 		expect(formatted).not.toContain("[DRY RUN]");
 		expect(formatted).not.toContain("Use dryRun=false to apply changes");
 	});
+
+	it("#given replacement preview fields #when formatting #then shows before and after lines", () => {
+		// given
+		const result = makeResult({
+			matches: [
+				makeCliMatch({
+					text: 'console.log("hello")',
+					replacement: 'logger.info("hello")',
+				}),
+			],
+		});
+
+		// when
+		const formatted = formatReplaceResult(result, true);
+
+		// then
+		expect(formatted).toContain('- console.log("hello")');
+		expect(formatted).toContain('+ logger.info("hello")');
+	});
 });

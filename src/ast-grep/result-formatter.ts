@@ -80,7 +80,12 @@ export function formatReplaceResult(result: SgResult, isDryRun: boolean): string
 	for (const match of result.matches) {
 		const loc = `${match.file}:${match.range.start.line + 1}:${match.range.start.column + 1}`;
 		lines.push(`${loc}`);
-		lines.push(`  ${match.text}`);
+		if (match.replacement !== undefined) {
+			lines.push(`  - ${match.text}`);
+			lines.push(`  + ${match.replacement}`);
+		} else {
+			lines.push(`  ${match.text}`);
+		}
 		lines.push("");
 	}
 

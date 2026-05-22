@@ -30,6 +30,8 @@ export interface CliMatch {
 	lines: string;
 	charCount: { leading: number; trailing: number };
 	language: string;
+	replacement?: string;
+	replacementOffsets?: { start: number; end: number };
 	ruleId?: string;
 	severity?: string;
 	note?: string | null;

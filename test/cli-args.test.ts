@@ -125,6 +125,28 @@ describe("buildSgArgs", () => {
 		expect(args.at(-1)).toBe(".");
 	});
 
+	it("#given files result mode #when building args #then uses files-with-matches", () => {
+		// given
+		const options: RunSgOptions = { pattern, lang: "typescript", resultMode: "files", paths: ["src"] };
+
+		// when
+		const args = buildSgArgs(options, false);
+
+		// then
+		expect(args).toEqual(["run", "-p", pattern, "--lang", "typescript", "--files-with-matches", "src"]);
+	});
+
+	it("#given limited search #when building stream args #then uses json stream mode", () => {
+		// given
+		const options: RunSgOptions = { pattern, lang: "typescript", maxResults: 2, paths: ["src"] };
+
+		// when
+		const args = buildSgArgs(options, false, "stream");
+
+		// then
+		expect(args).toEqual(["run", "-p", pattern, "--lang", "typescript", "--json=stream", "src"]);
+	});
+
 	it("#given write pass options #when building args #then omits compact JSON flag", () => {
 		// given
 		const options: RunSgOptions = {
@@ -250,6 +272,32 @@ describe("buildSgScanArgs", () => {
 			"2",
 			"--globs",
 			"**/*.ts",
+			"src",
+		]);
+	});
+
+	it("#given files mode and max results #when building scan args #then uses files-with-matches and max-results", () => {
+		// given
+		const options: RunSgScanOptions = {
+			inlineRules: ["id: find-console-log", "language: typescript", "rule:", "  pattern: console.log($MSG)"].join(
+				"\n",
+			),
+			paths: ["src"],
+			resultMode: "files",
+			maxResults: 3,
+		};
+
+		// when
+		const args = buildSgScanArgs(options);
+
+		// then
+		expect(args).toEqual([
+			"scan",
+			"--inline-rules",
+			options.inlineRules,
+			"--files-with-matches",
+			"--max-results",
+			"3",
 			"src",
 		]);
 	});

@@ -93,6 +93,8 @@ Run advanced inline YAML ast-grep rules across repository files.
 | `globs` | `string[]` (optional) | Include / exclude globs. |
 | `context` | `number` (optional) | Lines of context around matches. |
 | `includeMetadata` | `boolean` (optional, default `false`) | Preserve rule metadata when present. |
+| `maxResults` | `number` (optional) | Maximum number of results to return. |
+| `resultMode` | `"matches" | "files"` (optional, default `"matches"`) | Return full matches or only matched files. |
 
 Use this when a structural query needs relational/composite YAML rules and simple `ast_grep_search` patterns are no longer sufficient.
 
@@ -135,6 +137,8 @@ Search code by AST structure across 25 languages.
 | `paths` | `string[]` (optional, default `[ctx.cwd]`) | Roots to search. |
 | `globs` | `string[]` (optional) | Include / exclude globs (prefix `!` to exclude). |
 | `context` | `number` (optional) | Lines of context around each match. |
+| `maxResults` | `number` (optional) | Maximum number of results to return. |
+| `resultMode` | `"matches" | "files"` (optional, default `"matches"`) | Return full matches or only matched files. |
 
 ### `ast_grep_replace`
 

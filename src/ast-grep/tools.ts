@@ -33,8 +33,10 @@ import {
 	type RunSgScanOptions,
 	type RunSgTestPatternOptions,
 	type RunSgTestRuleOptions,
+	SG_RESULT_MODES,
 	SG_STRICTNESS_LEVELS,
 	type SgResult,
+	type SgResultMode,
 	type SgStrictness,
 	type SgTruncationReason,
 } from "./types.js";
@@ -69,6 +71,8 @@ const SearchParams = Type.Object({
 		}),
 	),
 	context: Type.Optional(Type.Number({ description: "Number of context lines around each match" })),
+	maxResults: Type.Optional(Type.Number({ description: "Maximum number of results to return" })),
+	resultMode: Type.Optional(StringEnum(SG_RESULT_MODES, { description: "Return full matches or matched files only" })),
 });
 
 const ReplaceParams = Type.Object({
@@ -108,6 +112,8 @@ const ScanParams = Type.Object({
 	globs: Type.Optional(Type.Array(Type.String(), { description: "Include/exclude globs (prefix ! to exclude)" })),
 	context: Type.Optional(Type.Number({ description: "Number of context lines around each match" })),
 	includeMetadata: Type.Optional(Type.Boolean({ description: "Include rule metadata from scan output when present" })),
+	maxResults: Type.Optional(Type.Number({ description: "Maximum number of results to return" })),
+	resultMode: Type.Optional(StringEnum(SG_RESULT_MODES, { description: "Return full matches or matched files only" })),
 });
 
 export interface AstGrepSearchDetails {
@@ -115,6 +121,9 @@ export interface AstGrepSearchDetails {
 	lang: CliLanguage;
 	paths: string[];
 	globs?: string[];
+	maxResults?: number;
+	resultMode: SgResultMode;
+	matchedFiles?: string[];
 	matches: SgResult["matches"];
 	totalMatches: number;
 	truncated: boolean;
@@ -167,6 +176,9 @@ export interface AstGrepScanDetails {
 	globs?: string[];
 	context?: number;
 	includeMetadata: boolean;
+	maxResults?: number;
+	resultMode: SgResultMode;
+	matchedFiles?: string[];
 	matches: SgResult["matches"];
 	totalMatches: number;
 	truncated: boolean;
@@ -202,6 +214,8 @@ export const ast_grep_search = defineTool({
 		};
 		if (params.globs !== undefined) options.globs = params.globs;
 		if (params.context !== undefined) options.context = params.context;
+		if (params.maxResults !== undefined) options.maxResults = params.maxResults;
+		if (params.resultMode !== undefined) options.resultMode = params.resultMode;
 		const result = await runSg(options);
 
 		const text = formatSearchResult(result);
@@ -215,11 +229,14 @@ export const ast_grep_search = defineTool({
 			pattern: params.pattern,
 			lang: params.lang,
 			paths,
+			resultMode: result.resultMode ?? params.resultMode ?? "matches",
 			matches: result.matches,
 			totalMatches: result.totalMatches,
 			truncated: result.truncated,
 		};
 		if (params.globs !== undefined) details.globs = params.globs;
+		if (params.maxResults !== undefined) details.maxResults = params.maxResults;
+		if (result.matchedFiles !== undefined) details.matchedFiles = result.matchedFiles;
 		if (result.truncatedReason !== undefined) details.truncatedReason = result.truncatedReason;
 		if (result.error !== undefined) details.error = result.error;
 		if (hint !== undefined) details.hint = hint;
@@ -421,17 +438,22 @@ export const ast_grep_scan = defineTool({
 		if (params.globs !== undefined) options.globs = params.globs;
 		if (params.context !== undefined) options.context = params.context;
 		if (params.includeMetadata !== undefined) options.includeMetadata = params.includeMetadata;
+		if (params.maxResults !== undefined) options.maxResults = params.maxResults;
+		if (params.resultMode !== undefined) options.resultMode = params.resultMode;
 		const result = await runSgScan(options);
 		const details: AstGrepScanDetails = {
 			inlineRules: params.inlineRules,
 			paths,
 			includeMetadata: params.includeMetadata === true,
+			resultMode: result.resultMode ?? params.resultMode ?? "matches",
 			matches: result.matches,
 			totalMatches: result.totalMatches,
 			truncated: result.truncated,
 		};
 		if (params.globs !== undefined) details.globs = params.globs;
 		if (params.context !== undefined) details.context = params.context;
+		if (params.maxResults !== undefined) details.maxResults = params.maxResults;
+		if (result.matchedFiles !== undefined) details.matchedFiles = result.matchedFiles;
 		if (result.truncatedReason !== undefined) details.truncatedReason = result.truncatedReason;
 		if (result.error !== undefined) details.error = result.error;
 		const text = result.error

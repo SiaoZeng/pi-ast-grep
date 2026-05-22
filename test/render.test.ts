@@ -116,6 +116,7 @@ function makeSearchDetails(overrides: Partial<AstGrepSearchDetails> = {}): AstGr
 		pattern: "console.$METHOD($$$)",
 		lang: "typescript",
 		paths: ["src"],
+		resultMode: "matches",
 		matches,
 		totalMatches: matches.length,
 		truncated: false,
@@ -209,6 +210,7 @@ function makeScanDetails(overrides: Partial<AstGrepScanDetails> = {}): AstGrepSc
 		inlineRules: ["id: find-console-log", "language: typescript", "rule:", "  pattern: console.log($MSG)"].join("\n"),
 		paths: ["src"],
 		includeMetadata: false,
+		resultMode: "matches",
 		matches,
 		totalMatches: matches.length,
 		truncated: false,
@@ -259,6 +261,30 @@ describe("renderSearchResult", () => {
 		expect(output).toContain("src/console.ts");
 		expect(output).toContain("8:2");
 		expect(output).toContain("console.error(message);");
+	});
+
+	it("#given file-only search result #when collapsed #then shows matched files summary", () => {
+		// given
+		const details = makeSearchDetails({
+			resultMode: "files",
+			matchedFiles: ["src/logger.ts", "src/console.ts"],
+			matches: [],
+			totalMatches: 2,
+		});
+		const result: AgentToolResult<AstGrepSearchDetails> = {
+			content: [{ type: "text", text: "" }],
+			details,
+		};
+
+		// when
+		const output = renderText(
+			renderSearchResult(result, { expanded: false, isPartial: false }, testTheme, { lastComponent: undefined }),
+		);
+
+		// then
+		expect(output).toContain("2 files");
+		expect(output).toContain("src/logger.ts");
+		expect(output).toContain("src/console.ts");
 	});
 
 	it("#given max output truncation #when collapsed #then explains the byte limit", () => {
@@ -398,6 +424,29 @@ describe("renderScanResult", () => {
 		expect(output).toContain("2 files");
 		expect(output).toContain("src/logger.ts");
 		expect(output).toContain("src/console.ts");
+	});
+
+	it("#given scan file-only result #when rendering #then shows file summary", () => {
+		// given
+		const details = makeScanDetails({
+			resultMode: "files",
+			matchedFiles: ["src/logger.ts"],
+			matches: [],
+			totalMatches: 1,
+		});
+		const result: AgentToolResult<AstGrepScanDetails> = {
+			content: [{ type: "text", text: "" }],
+			details,
+		};
+
+		// when
+		const output = renderText(
+			renderScanResult(result, { expanded: false, isPartial: false }, testTheme, { lastComponent: undefined }),
+		);
+
+		// then
+		expect(output).toContain("1 file");
+		expect(output).toContain("src/logger.ts");
 	});
 
 	it("#given scan error #when rendering #then keeps the failure visible", () => {

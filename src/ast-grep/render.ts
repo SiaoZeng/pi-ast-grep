@@ -13,6 +13,7 @@ import type {
 	CliLanguage,
 	CliMatch,
 	DebugQueryFormat,
+	SgResultMode,
 	SgStrictness,
 	SgTruncationReason,
 } from "./types.js";
@@ -28,6 +29,8 @@ interface AstGrepSearchCallArgs {
 	paths?: string[];
 	globs?: string[];
 	context?: number;
+	maxResults?: number;
+	resultMode?: string;
 }
 
 interface AstGrepReplaceCallArgs {
@@ -61,6 +64,8 @@ interface AstGrepScanCallArgs {
 	globs?: string[];
 	context?: number;
 	includeMetadata?: boolean;
+	maxResults?: number;
+	resultMode?: string;
 }
 
 interface MatchGroup {
@@ -147,6 +152,10 @@ function isTruncationReason(value: unknown): value is SgTruncationReason {
 	return value === "max_matches" || value === "max_output_bytes" || value === "timeout";
 }
 
+function isResultMode(value: unknown): value is SgResultMode {
+	return value === "matches" || value === "files";
+}
+
 function isCliMatch(value: unknown): value is CliMatch {
 	if (!isRecord(value)) {
 		return false;
@@ -186,11 +195,15 @@ function getSearchCallArgs(args: unknown): AstGrepSearchCallArgs | undefined {
 	const paths = readStringArray(args, "paths");
 	const globs = readStringArray(args, "globs");
 	const context = readNumber(args, "context");
+	const maxResults = readNumber(args, "maxResults");
+	const resultMode = readString(args, "resultMode");
 	if (pattern !== undefined) result.pattern = pattern;
 	if (lang !== undefined) result.lang = lang;
 	if (paths !== undefined) result.paths = paths;
 	if (globs !== undefined) result.globs = globs;
 	if (context !== undefined) result.context = context;
+	if (maxResults !== undefined) result.maxResults = maxResults;
+	if (resultMode !== undefined) result.resultMode = resultMode;
 	return result;
 }
 
@@ -264,11 +277,15 @@ function getScanCallArgs(args: unknown): AstGrepScanCallArgs | undefined {
 	const globs = readStringArray(args, "globs");
 	const context = readNumber(args, "context");
 	const includeMetadata = readBoolean(args, "includeMetadata");
+	const maxResults = readNumber(args, "maxResults");
+	const resultMode = readString(args, "resultMode");
 	if (inlineRules !== undefined) result.inlineRules = inlineRules;
 	if (paths !== undefined) result.paths = paths;
 	if (globs !== undefined) result.globs = globs;
 	if (context !== undefined) result.context = context;
 	if (includeMetadata !== undefined) result.includeMetadata = includeMetadata;
+	if (maxResults !== undefined) result.maxResults = maxResults;
+	if (resultMode !== undefined) result.resultMode = resultMode;
 	return result;
 }
 
@@ -280,11 +297,16 @@ function isSearchDetails(value: unknown): value is AstGrepSearchDetails {
 	const truncatedReason = value["truncatedReason"];
 	const error = value["error"];
 	const hint = value["hint"];
+	const matchedFiles = value["matchedFiles"];
+	const resultMode = value["resultMode"];
 	return (
 		typeof value["pattern"] === "string" &&
 		isCliLanguage(value["lang"]) &&
 		Array.isArray(value["paths"]) &&
 		value["paths"].every((item) => typeof item === "string") &&
+		isResultMode(resultMode) &&
+		(matchedFiles === undefined ||
+			(Array.isArray(matchedFiles) && matchedFiles.every((item) => typeof item === "string"))) &&
 		isCliMatchArray(value["matches"]) &&
 		typeof value["totalMatches"] === "number" &&
 		typeof value["truncated"] === "boolean" &&
@@ -369,12 +391,19 @@ function isScanDetails(value: unknown): value is AstGrepScanDetails {
 	const error = value["error"];
 	const globs = value["globs"];
 	const context = value["context"];
+	const maxResults = value["maxResults"];
+	const matchedFiles = value["matchedFiles"];
+	const resultMode = value["resultMode"];
 	return (
 		typeof value["inlineRules"] === "string" &&
 		Array.isArray(value["paths"]) &&
 		value["paths"].every((item) => typeof item === "string") &&
 		(globs === undefined || (Array.isArray(globs) && globs.every((item) => typeof item === "string"))) &&
 		(context === undefined || typeof context === "number") &&
+		(maxResults === undefined || typeof maxResults === "number") &&
+		isResultMode(resultMode) &&
+		(matchedFiles === undefined ||
+			(Array.isArray(matchedFiles) && matchedFiles.every((item) => typeof item === "string"))) &&
 		typeof value["includeMetadata"] === "boolean" &&
 		isCliMatchArray(value["matches"]) &&
 		typeof value["totalMatches"] === "number" &&
@@ -441,6 +470,12 @@ function formatSearchBadges(args: AstGrepSearchCallArgs | undefined, theme: Them
 	if (args?.context !== undefined) {
 		badges += theme.fg("dim", ` [context ${args.context}]`);
 	}
+	if (args?.maxResults !== undefined) {
+		badges += theme.fg("dim", ` [max ${args.maxResults}]`);
+	}
+	if (args?.resultMode) {
+		badges += theme.fg("dim", ` [${args.resultMode}]`);
+	}
 	return badges;
 }
 
@@ -496,6 +531,12 @@ function formatScanBadges(args: AstGrepScanCallArgs | undefined, theme: Theme): 
 	}
 	if (args?.includeMetadata) {
 		badges += theme.fg("dim", " [metadata]");
+	}
+	if (args?.maxResults !== undefined) {
+		badges += theme.fg("dim", ` [max ${args.maxResults}]`);
+	}
+	if (args?.resultMode) {
+		badges += theme.fg("dim", ` [${args.resultMode}]`);
 	}
 	return badges;
 }
@@ -679,6 +720,16 @@ function formatSearchResultText(
 		return text;
 	}
 
+	if (details.resultMode === "files") {
+		const files = details.matchedFiles ?? [];
+		const summary = theme.fg("success", pluralize(details.totalMatches, "file", "files"));
+		const lines = files.slice(0, MAX_COLLAPSED_FILES).map((file) => theme.fg("muted", `  ${shortenPath(file)}`));
+		if (files.length > MAX_COLLAPSED_FILES) {
+			lines.push(theme.fg("dim", `  … ${files.length - MAX_COLLAPSED_FILES} more files`));
+		}
+		return `${summary}${formatTruncationSuffix(details, theme)}${lines.length > 0 ? `\n${lines.join("\n")}` : ""}`;
+	}
+
 	const groups = groupMatchesByFile(details.matches);
 	const summary = formatMatchSummary(details.totalMatches, groups.length, theme);
 	if (!options.expanded) {
@@ -825,6 +876,16 @@ function formatScanResultText(
 
 	if (details.totalMatches === 0) {
 		return theme.fg("dim", "No matches found");
+	}
+
+	if (details.resultMode === "files") {
+		const files = details.matchedFiles ?? [];
+		const summary = theme.fg("success", pluralize(details.totalMatches, "file", "files"));
+		const lines = files.slice(0, MAX_COLLAPSED_FILES).map((file) => theme.fg("muted", `  ${shortenPath(file)}`));
+		if (files.length > MAX_COLLAPSED_FILES) {
+			lines.push(theme.fg("dim", `  … ${files.length - MAX_COLLAPSED_FILES} more files`));
+		}
+		return `${summary}${formatTruncationSuffix(details, theme)}${lines.length > 0 ? `\n${lines.join("\n")}` : ""}`;
 	}
 
 	const groups = groupMatchesByFile(details.matches);

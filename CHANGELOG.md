@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- scale controls for structural search and scan, including `maxResults` and `resultMode="files"` surfaces for cheaper repository discovery.
 - bundled guidance resources: the `ast-grep-guidance` skill and `/ast-grep-workflow` prompt template for parse → test → search/scan → replace flows.
 - `ast_grep_scan`, an advanced repository scan tool for running inline YAML ast-grep rules across project files.
 - `ast_grep_test`, a validation tool for checking simple patterns or inline YAML rules against explicit example code before repository-wide search.

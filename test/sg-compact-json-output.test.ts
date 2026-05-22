@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { createSgResultFromStdout } from "../src/ast-grep/json-output.js";
+import {
+	createSgFileListResultFromStdout,
+	createSgResultFromStdout,
+	createSgResultFromStreamStdout,
+} from "../src/ast-grep/json-output.js";
 import { DEFAULT_MAX_MATCHES, DEFAULT_MAX_OUTPUT_BYTES } from "../src/ast-grep/languages.js";
 import { buildJsonStdout, buildLargeStdout, makeCliMatch } from "./helpers/sg-fixtures.js";
 
@@ -80,5 +84,39 @@ describe("createSgResultFromStdout", () => {
 		expect(result.truncated).toBe(true);
 		expect(result.truncatedReason).toBe("max_output_bytes");
 		expect(result.error).toBe("Output too large and could not be parsed");
+	});
+
+	it("#given stream json lines #when creating result #then parses and enforces max results", () => {
+		// given
+		const lines = [
+			makeCliMatch({ file: "one.ts" }),
+			makeCliMatch({ file: "two.ts" }),
+			makeCliMatch({ file: "three.ts" }),
+		]
+			.map((match) => JSON.stringify(match))
+			.join("\n");
+
+		// when
+		const result = createSgResultFromStreamStdout(lines, 2);
+
+		// then
+		expect(result.matches).toHaveLength(2);
+		expect(result.totalMatches).toBe(3);
+		expect(result.truncated).toBe(true);
+		expect(result.resultMode).toBe("matches");
+	});
+
+	it("#given file list output #when creating result #then parses matched files and enforces max results", () => {
+		// given
+		const stdout = ["src/a.ts", "src/b.ts", "src/c.ts"].join("\n");
+
+		// when
+		const result = createSgFileListResultFromStdout(stdout, 2);
+
+		// then
+		expect(result.matchedFiles).toEqual(["src/a.ts", "src/b.ts"]);
+		expect(result.totalMatches).toBe(3);
+		expect(result.truncated).toBe(true);
+		expect(result.resultMode).toBe("files");
 	});
 });

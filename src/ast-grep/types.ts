@@ -38,13 +38,17 @@ export interface CliMatch {
 }
 
 export type SgTruncationReason = "max_matches" | "max_output_bytes" | "timeout";
+export const SG_RESULT_MODES = ["matches", "files"] as const;
+export type SgResultMode = (typeof SG_RESULT_MODES)[number];
 
 export interface SgResult {
 	matches: CliMatch[];
+	matchedFiles?: string[];
 	totalMatches: number;
 	truncated: boolean;
 	truncatedReason?: SgTruncationReason;
 	error?: string;
+	resultMode?: SgResultMode;
 }
 
 export interface RunSgOptions {
@@ -55,6 +59,8 @@ export interface RunSgOptions {
 	rewrite?: string;
 	context?: number;
 	updateAll?: boolean;
+	maxResults?: number;
+	resultMode?: SgResultMode;
 }
 
 export interface RunSgDebugQueryOptions {
@@ -88,4 +94,6 @@ export interface RunSgScanOptions {
 	globs?: string[];
 	context?: number;
 	includeMetadata?: boolean;
+	maxResults?: number;
+	resultMode?: SgResultMode;
 }

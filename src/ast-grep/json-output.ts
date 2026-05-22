@@ -62,6 +62,7 @@ export function createSgResultFromStdout(stdout: string): SgResult {
 		matches: finalMatches,
 		totalMatches,
 		truncated: outputTruncated || matchesTruncated,
+		resultMode: "matches",
 	};
 	if (truncatedReason !== undefined) result.truncatedReason = truncatedReason;
 	return result;
@@ -101,6 +102,65 @@ function isCliMatch(value: unknown): value is CliMatch {
 		isPosition(range["start"]) &&
 		isPosition(range["end"])
 	);
+}
+
+export function createSgResultFromStreamStdout(stdout: string, maxResults = DEFAULT_MAX_MATCHES): SgResult {
+	if (!stdout.trim()) {
+		return { matches: [], totalMatches: 0, truncated: false, resultMode: "matches" };
+	}
+
+	const lines = stdout.split("\n").filter((line) => line.trim().length > 0);
+	const matches: CliMatch[] = [];
+	let totalMatches = 0;
+
+	for (const line of lines) {
+		let parsed: unknown;
+		try {
+			parsed = JSON.parse(line);
+		} catch {
+			continue;
+		}
+		if (!isCliMatch(parsed)) {
+			continue;
+		}
+		totalMatches++;
+		if (matches.length < maxResults) {
+			matches.push(parsed);
+		}
+	}
+
+	const truncated = totalMatches > matches.length;
+	const result: SgResult = {
+		matches,
+		totalMatches,
+		truncated,
+		resultMode: "matches",
+	};
+	if (truncated) result.truncatedReason = "max_matches";
+	return result;
+}
+
+export function createSgFileListResultFromStdout(stdout: string, maxResults = DEFAULT_MAX_MATCHES): SgResult {
+	if (!stdout.trim()) {
+		return { matches: [], matchedFiles: [], totalMatches: 0, truncated: false, resultMode: "files" };
+	}
+
+	const lines = stdout
+		.split("\n")
+		.map((line) => line.trim())
+		.filter((line) => line.length > 0);
+	const matchedFiles = lines.slice(0, maxResults);
+	const totalMatches = lines.length;
+	const truncated = totalMatches > matchedFiles.length;
+	const result: SgResult = {
+		matches: [],
+		matchedFiles,
+		totalMatches,
+		truncated,
+		resultMode: "files",
+	};
+	if (truncated) result.truncatedReason = "max_matches";
+	return result;
 }
 
 function isCliMatchArray(value: unknown): value is CliMatch[] {

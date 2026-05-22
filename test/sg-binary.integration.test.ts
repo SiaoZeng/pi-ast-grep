@@ -250,6 +250,51 @@ describe("sg binary integration", () => {
 		expect(result.matches).toHaveLength(0);
 	}, 15_000);
 
+	it("#given search files mode #when ast_grep_search helper runs #then it returns matched files only", async () => {
+		// given
+		const path = findSgCliPathSync();
+		if (!path) {
+			expect.fail("sg binary unavailable; integration test cannot run");
+		}
+
+		// when
+		const result = await runSg({
+			pattern: "console.log($MSG)",
+			lang: "typescript",
+			paths: [FIXTURE_DIR],
+			resultMode: "files",
+		});
+
+		// then
+		expect(result.error).toBeUndefined();
+		expect(result.resultMode).toBe("files");
+		expect(result.matchedFiles?.length).toBeGreaterThanOrEqual(1);
+		expect(result.matches).toHaveLength(0);
+	}, 15_000);
+
+	it("#given limited search #when ast_grep_search helper runs #then it truncates to max results", async () => {
+		// given
+		const path = findSgCliPathSync();
+		if (!path) {
+			expect.fail("sg binary unavailable; integration test cannot run");
+		}
+
+		// when
+		const result = await runSg({
+			pattern: "console.log($MSG)",
+			lang: "typescript",
+			paths: [FIXTURE_DIR],
+			maxResults: 1,
+		});
+
+		// then
+		expect(result.error).toBeUndefined();
+		expect(result.matches).toHaveLength(1);
+		expect(result.truncated).toBe(true);
+		expect(result.truncatedReason).toBe("max_matches");
+		expect(result.totalMatches).toBeGreaterThanOrEqual(1);
+	}, 15_000);
+
 	it("#given inline rules and repository paths #when ast_grep_scan runs #then it returns repository matches", async () => {
 		// given
 		const path = findSgCliPathSync();
@@ -269,6 +314,29 @@ describe("sg binary integration", () => {
 		expect(result.error).toBeUndefined();
 		expect(result.matches.length).toBeGreaterThanOrEqual(1);
 		expect(result.matches[0]?.file).toContain("sample.ts");
+	}, 15_000);
+
+	it("#given scan files mode #when ast_grep_scan runs #then it returns matched files only", async () => {
+		// given
+		const path = findSgCliPathSync();
+		if (!path) {
+			expect.fail("sg binary unavailable; integration test cannot run");
+		}
+		const rule = ["id: find-console-log", "language: typescript", "rule:", "  pattern: console.log($MSG)"].join("\n");
+
+		// when
+		const result = await runSgScan({
+			inlineRules: rule,
+			paths: [FIXTURE_DIR],
+			resultMode: "files",
+			maxResults: 1,
+		});
+
+		// then
+		expect(result.error).toBeUndefined();
+		expect(result.resultMode).toBe("files");
+		expect(result.matchedFiles).toHaveLength(1);
+		expect(result.matches).toHaveLength(0);
 	}, 15_000);
 
 	it("#given metadata-enabled scan #when ast_grep_scan runs #then metadata fields are preserved", async () => {

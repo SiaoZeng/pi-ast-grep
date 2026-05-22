@@ -4,7 +4,11 @@ import { existsSync } from "node:fs";
 import { getAstGrepPath, getSgCliPath } from "./binary-path.js";
 import { ensureAstGrepBinary } from "./downloader.js";
 import { SearchTimeoutError } from "./errors.js";
-import { createSgResultFromStdout } from "./json-output.js";
+import {
+	createSgFileListResultFromStdout,
+	createSgResultFromStdout,
+	createSgResultFromStreamStdout,
+} from "./json-output.js";
 import { DEFAULT_TIMEOUT_MS } from "./languages.js";
 import { collectProcessOutputWithTimeout } from "./process-timeout.js";
 import type {
@@ -41,12 +45,20 @@ function isEnoentError(err: unknown): boolean {
 	return errorCode === "ENOENT" || message.includes("ENOENT") || message.includes("not found");
 }
 
-export function buildSgArgs(options: RunSgOptions, includeUpdateAll: boolean): string[] {
+export function buildSgArgs(
+	options: RunSgOptions,
+	includeUpdateAll: boolean,
+	jsonStyle: "compact" | "stream" = "compact",
+): string[] {
 	const isWritePass = options.updateAll === true && !includeUpdateAll;
 	const args = ["run", "-p", options.pattern, "--lang", options.lang];
 
 	if (!isWritePass) {
-		args.push("--json=compact");
+		if (options.resultMode === "files") {
+			args.push("--files-with-matches");
+		} else {
+			args.push(`--json=${jsonStyle}`);
+		}
 	}
 
 	if (options.rewrite) {
@@ -95,13 +107,21 @@ export function buildSgTestRuleArgs(options: RunSgTestRuleOptions): string[] {
 	return ["scan", "--inline-rules", options.rule, "--stdin", "--json=compact"];
 }
 
-export function buildSgScanArgs(options: RunSgScanOptions): string[] {
-	const args = ["scan", "--inline-rules", options.inlineRules, "--json=compact"];
+export function buildSgScanArgs(options: RunSgScanOptions, jsonStyle: "compact" | "stream" = "compact"): string[] {
+	const args = ["scan", "--inline-rules", options.inlineRules];
+	if (options.resultMode === "files") {
+		args.push("--files-with-matches");
+	} else {
+		args.push(`--json=${jsonStyle}`);
+	}
 	if (options.includeMetadata) {
 		args.push("--include-metadata");
 	}
 	if (options.context && options.context > 0) {
 		args.push("-C", String(options.context));
+	}
+	if (options.maxResults && options.maxResults > 0) {
+		args.push("--max-results", String(options.maxResults));
 	}
 	if (options.globs) {
 		for (const glob of options.globs) {
@@ -123,6 +143,25 @@ async function spawnSg(cliPath: string, args: string[], timeoutMs: number, stdin
 	return collectProcessOutputWithTimeout(proc, timeoutMs);
 }
 
+function normalizeSgErrorResult(error: string): SgResult {
+	return {
+		matches: [],
+		totalMatches: 0,
+		truncated: false,
+		error,
+	};
+}
+
+function createSgResultFromMode(stdout: string, resultMode: "matches" | "files", maxResults?: number): SgResult {
+	if (resultMode === "files") {
+		return createSgFileListResultFromStdout(stdout, maxResults);
+	}
+	if (maxResults !== undefined && maxResults > 0) {
+		return createSgResultFromStreamStdout(stdout, maxResults);
+	}
+	return createSgResultFromStdout(stdout);
+}
+
 async function resolveCliPath(): Promise<string | null> {
 	let cliPath = getSgCliPath();
 
@@ -142,7 +181,9 @@ export async function runSg(options: RunSgOptions, hasRetriedDownload = false): 
 	const shouldSeparateWritePass = !!(options.rewrite && options.updateAll);
 
 	const readOptions = shouldSeparateWritePass ? { ...options, updateAll: false } : options;
-	const args = buildSgArgs(readOptions, !shouldSeparateWritePass);
+	const shouldUseStream =
+		readOptions.resultMode === "files" || (readOptions.maxResults !== undefined && readOptions.maxResults > 0);
+	const args = buildSgArgs(readOptions, !shouldSeparateWritePass, shouldUseStream ? "stream" : "compact");
 
 	const cliPath = await resolveCliPath();
 	if (!cliPath) {
@@ -200,18 +241,18 @@ export async function runSg(options: RunSgOptions, hasRetriedDownload = false): 
 
 	if (exitCode !== 0 && stdout.trim() === "") {
 		if (stderr.includes("No files found")) {
-			return { matches: [], totalMatches: 0, truncated: false };
+			return { matches: [], totalMatches: 0, truncated: false, resultMode: options.resultMode ?? "matches" };
 		}
 		if (stderr.trim()) {
-			return { matches: [], totalMatches: 0, truncated: false, error: stderr.trim() };
+			return normalizeSgErrorResult(stderr.trim());
 		}
-		return { matches: [], totalMatches: 0, truncated: false };
+		return { matches: [], totalMatches: 0, truncated: false, resultMode: options.resultMode ?? "matches" };
 	}
 
-	const jsonResult = createSgResultFromStdout(stdout);
+	const jsonResult = createSgResultFromMode(stdout, readOptions.resultMode ?? "matches", readOptions.maxResults);
 
 	if (shouldSeparateWritePass && jsonResult.matches.length > 0) {
-		const writeArgs = buildSgArgs(options, false);
+		const writeArgs = buildSgArgs(options, false, "compact");
 		writeArgs.push("--update-all");
 
 		try {
@@ -349,21 +390,22 @@ export async function runSgScan(options: RunSgScanOptions, hasRetriedDownload = 
 	}
 
 	try {
-		const output = await spawnSg(cliPath, buildSgScanArgs(options), DEFAULT_TIMEOUT_MS);
+		const shouldUseStream =
+			options.resultMode === "files" || (options.maxResults !== undefined && options.maxResults > 0);
+		const output = await spawnSg(
+			cliPath,
+			buildSgScanArgs(options, shouldUseStream ? "stream" : "compact"),
+			DEFAULT_TIMEOUT_MS,
+		);
 		const stdout = output.stdout.trim();
 		const stderr = output.stderr.trim();
 		if (output.exitCode !== 0 && stdout.length === 0) {
 			if (stderr.includes("No files found")) {
-				return { matches: [], totalMatches: 0, truncated: false };
+				return { matches: [], totalMatches: 0, truncated: false, resultMode: options.resultMode ?? "matches" };
 			}
-			return {
-				matches: [],
-				totalMatches: 0,
-				truncated: false,
-				error: stderr || `ast-grep exited with code ${output.exitCode}`,
-			};
+			return normalizeSgErrorResult(stderr || `ast-grep exited with code ${output.exitCode}`);
 		}
-		const result = createSgResultFromStdout(stdout);
+		const result = createSgResultFromMode(stdout, options.resultMode ?? "matches", options.maxResults);
 		if (output.exitCode !== 0 && result.error === undefined) {
 			result.error = stderr || `ast-grep exited with code ${output.exitCode}`;
 		}

@@ -104,7 +104,11 @@ function isCliMatch(value: unknown): value is CliMatch {
 	);
 }
 
-export function createSgResultFromStreamStdout(stdout: string, maxResults = DEFAULT_MAX_MATCHES): SgResult {
+export function createSgResultFromStreamStdout(
+	stdout: string,
+	maxResults = DEFAULT_MAX_MATCHES,
+	totalMatchesOverride?: number,
+): SgResult {
 	if (!stdout.trim()) {
 		return { matches: [], totalMatches: 0, truncated: false, resultMode: "matches" };
 	}
@@ -129,10 +133,11 @@ export function createSgResultFromStreamStdout(stdout: string, maxResults = DEFA
 		}
 	}
 
-	const truncated = totalMatches > matches.length;
+	const finalTotalMatches = totalMatchesOverride ?? totalMatches;
+	const truncated = finalTotalMatches > matches.length;
 	const result: SgResult = {
 		matches,
-		totalMatches,
+		totalMatches: finalTotalMatches,
 		truncated,
 		resultMode: "matches",
 	};
@@ -140,7 +145,11 @@ export function createSgResultFromStreamStdout(stdout: string, maxResults = DEFA
 	return result;
 }
 
-export function createSgFileListResultFromStdout(stdout: string, maxResults = DEFAULT_MAX_MATCHES): SgResult {
+export function createSgFileListResultFromStdout(
+	stdout: string,
+	maxResults = DEFAULT_MAX_MATCHES,
+	totalMatchesOverride?: number,
+): SgResult {
 	if (!stdout.trim()) {
 		return { matches: [], matchedFiles: [], totalMatches: 0, truncated: false, resultMode: "files" };
 	}
@@ -151,11 +160,12 @@ export function createSgFileListResultFromStdout(stdout: string, maxResults = DE
 		.filter((line) => line.length > 0);
 	const matchedFiles = lines.slice(0, maxResults);
 	const totalMatches = lines.length;
-	const truncated = totalMatches > matchedFiles.length;
+	const finalTotalMatches = totalMatchesOverride ?? totalMatches;
+	const truncated = finalTotalMatches > matchedFiles.length;
 	const result: SgResult = {
 		matches: [],
 		matchedFiles,
-		totalMatches,
+		totalMatches: finalTotalMatches,
 		truncated,
 		resultMode: "files",
 	};

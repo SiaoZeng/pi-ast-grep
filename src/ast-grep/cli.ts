@@ -330,7 +330,12 @@ export async function runSg(options: RunSgOptions, hasRetriedDownload = false): 
 
 	if (shouldSeparateWritePass && jsonResult.matches.length > 0) {
 		const writeArgs = buildSgArgs(options, false, "compact");
-		writeArgs.push("--update-all");
+		const separatorIndex = writeArgs.lastIndexOf("--");
+		if (separatorIndex >= 0) {
+			writeArgs.splice(separatorIndex, 0, "--update-all");
+		} else {
+			writeArgs.push("--update-all");
+		}
 
 		try {
 			const writeOutput = await spawnSg(cliPath, writeArgs, timeout);

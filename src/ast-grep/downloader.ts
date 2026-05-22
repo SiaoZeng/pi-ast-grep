@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { existsSync, rmSync } from "node:fs";
+import { existsSync, rmSync, statSync } from "node:fs";
 import { createRequire } from "node:module";
 import { homedir } from "node:os";
 import { join } from "node:path";
@@ -17,6 +17,7 @@ const REPO = "ast-grep/ast-grep";
 const CACHE_DIR_NAME = "pi-ast-grep";
 const DEFAULT_VERSION = "0.42.3";
 const AUTO_DOWNLOAD_ENV_VARS = ["PI_AST_GREP_ALLOW_DOWNLOAD"] as const;
+const MIN_BINARY_SIZE_BYTES = 10_000;
 
 interface PlatformInfo {
 	arch: string;
@@ -45,6 +46,14 @@ function getAstGrepVersion(): string {
 
 function isPackageWithVersion(value: unknown): value is { version: string } {
 	return typeof value === "object" && value !== null && "version" in value && typeof value.version === "string";
+}
+
+function isUsableBinaryPath(filePath: string): boolean {
+	try {
+		return existsSync(filePath) && filePath.length > 0 && statSync(filePath).size > MIN_BINARY_SIZE_BYTES;
+	} catch {
+		return false;
+	}
 }
 
 export function isVersionOutputCompatible(output: string, expectedVersion: string): boolean {
@@ -149,7 +158,7 @@ export async function ensureAstGrepBinary(): Promise<string | null> {
 	}
 
 	const cachedPath = getCachedBinaryPath();
-	if (cachedPath) {
+	if (cachedPath && isUsableBinaryPath(cachedPath)) {
 		return cachedPath;
 	}
 

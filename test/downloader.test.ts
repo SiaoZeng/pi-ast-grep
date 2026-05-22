@@ -1,9 +1,11 @@
+import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import {
 	DEFAULT_AST_GREP_VERSION,
+	ensureAstGrepBinary,
 	getBinaryName,
 	getCacheDir,
 	isAutoDownloadEnabled,
@@ -92,5 +94,20 @@ describe("downloader helpers", () => {
 
 		// then
 		expect(isAutoDownloadEnabled()).toBe(true);
+	});
+
+	it("#given invalid cached binary and no download opt in #when ensuring binary #then returns null instead of trusting cache", async () => {
+		// given
+		delete process.env["PI_AST_GREP_ALLOW_DOWNLOAD"];
+		const cacheDirectory = getCacheDir();
+		mkdirSync(cacheDirectory, { recursive: true });
+		const binaryPath = join(cacheDirectory, getBinaryName());
+		writeFileSync(binaryPath, "bad", "utf-8");
+
+		// when
+		const result = await ensureAstGrepBinary();
+
+		// then
+		expect(result).toBeNull();
 	});
 });

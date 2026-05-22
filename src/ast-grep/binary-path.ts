@@ -144,7 +144,7 @@ let resolvedCliPath: string | null = null;
 let initPromise: Promise<string | null> | null = null;
 
 export function getSgCliPath(): string | null {
-	if (resolvedCliPath !== null && existsSync(resolvedCliPath)) {
+	if (resolvedCliPath !== null && isValidBinary(resolvedCliPath)) {
 		return resolvedCliPath;
 	}
 	const syncPath = findSgCliPathSync();
@@ -160,7 +160,7 @@ export function setSgCliPath(path: string): void {
 }
 
 export async function getAstGrepPath(): Promise<string | null> {
-	if (resolvedCliPath !== null && existsSync(resolvedCliPath)) {
+	if (resolvedCliPath !== null && isValidBinary(resolvedCliPath)) {
 		return resolvedCliPath;
 	}
 
@@ -200,12 +200,12 @@ export function startBackgroundInit(): void {
 
 export function isCliAvailable(): boolean {
 	const path = findSgCliPathSync();
-	return path !== null && existsSync(path);
+	return path !== null && isValidBinary(path);
 }
 
 export async function ensureCliAvailable(): Promise<boolean> {
 	const path = await getAstGrepPath();
-	return path !== null && existsSync(path);
+	return path !== null && isValidBinary(path);
 }
 
 export function resetResolvedPathForTests(): void {

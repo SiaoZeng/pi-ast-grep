@@ -14,7 +14,7 @@ import { ast_gparse, ast_grep_replace, ast_grep_scan, ast_grep_search, ast_grep_
  * Ports omo's ast-grep tool stack as a pi extension. Resolves the `sg`
  * binary in this order: cache → @ast-grep/cli npm package → platform
  * package → PATH → Homebrew → GitHub release auto-download (last resort,
- * gated by `PI_OFFLINE`).
+ * gated by `PI_OFFLINE` and explicit `PI_AST_GREP_ALLOW_DOWNLOAD=1`).
  *
  * Tools registered:
  *   - ast_grep_search   — AST pattern search across files (parallel-safe)
@@ -24,8 +24,8 @@ import { ast_gparse, ast_grep_replace, ast_grep_scan, ast_grep_search, ast_grep_
  *   - ast_grep_scan     — run advanced inline YAML rules across repository files
  *
  * Commands registered:
- *   - /ast-grep         — show binary path, version, and cache location
- *   - /ast-grep install — force-download the sg binary into the cache
+ *   - /ast-grep         — show binary path and cache/config state
+ *   - /ast-grep install — opt-in download attempt for the sg binary cache
  *
  * See README.md for installation and usage.
  */
@@ -37,7 +37,7 @@ export default function (pi: ExtensionAPI): void {
 	pi.registerTool(ast_grep_replace);
 
 	pi.registerCommand("ast-grep", {
-		description: "Show ast-grep binary path, version, and cache directory",
+		description: "Show ast-grep binary path and cache/config directory state",
 		handler: async (args, ctx) => {
 			const trimmed = args.trim();
 			const wantsInstall = trimmed === "install" || trimmed === "download";

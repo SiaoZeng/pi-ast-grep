@@ -1,7 +1,17 @@
 import { describe, expect, it } from "vitest";
 
-import { buildSgArgs, buildSgDebugQueryArgs } from "../src/ast-grep/cli.js";
-import type { RunSgDebugQueryOptions, RunSgOptions } from "../src/ast-grep/types.js";
+import {
+	buildSgArgs,
+	buildSgDebugQueryArgs,
+	buildSgTestPatternArgs,
+	buildSgTestRuleArgs,
+} from "../src/ast-grep/cli.js";
+import type {
+	RunSgDebugQueryOptions,
+	RunSgOptions,
+	RunSgTestPatternOptions,
+	RunSgTestRuleOptions,
+} from "../src/ast-grep/types.js";
 
 const pattern = "console.log($MSG)";
 const rewrite = "logger.info($MSG)";
@@ -174,5 +184,39 @@ describe("buildSgDebugQueryArgs", () => {
 
 		// then
 		expect(args).toEqual(["run", "-p", "console.log($MSG)", "--lang", "typescript", "--debug-query=ast", "--stdin"]);
+	});
+});
+
+describe("buildSgTestPatternArgs", () => {
+	it("#given test pattern options #when building args #then uses stdin compact-json run mode", () => {
+		// given
+		const options: RunSgTestPatternOptions = {
+			code: 'console.log("hi")',
+			pattern: "console.log($MSG)",
+			lang: "typescript",
+		};
+
+		// when
+		const args = buildSgTestPatternArgs(options);
+
+		// then
+		expect(args).toEqual(["run", "-p", "console.log($MSG)", "--lang", "typescript", "--stdin", "--json=compact"]);
+	});
+});
+
+describe("buildSgTestRuleArgs", () => {
+	it("#given test rule options #when building args #then uses scan inline-rules over stdin", () => {
+		// given
+		const options: RunSgTestRuleOptions = {
+			code: 'console.log("hi")',
+			rule: ["id: find-console-log", "language: typescript", "rule:", "  pattern: console.log($MSG)"].join("\n"),
+			lang: "typescript",
+		};
+
+		// when
+		const args = buildSgTestRuleArgs(options);
+
+		// then
+		expect(args).toEqual(["scan", "--inline-rules", options.rule, "--stdin", "--json=compact"]);
 	});
 });

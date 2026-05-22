@@ -2,8 +2,18 @@ import type { AgentToolResult } from "@earendil-works/pi-coding-agent";
 import { Theme } from "@earendil-works/pi-coding-agent";
 import { describe, expect, it } from "vitest";
 
-import { renderParseResult, renderReplaceResult, renderSearchResult } from "../src/ast-grep/render.js";
-import type { AstGrepParseDetails, AstGrepReplaceDetails, AstGrepSearchDetails } from "../src/ast-grep/tools.js";
+import {
+	renderParseResult,
+	renderReplaceResult,
+	renderSearchResult,
+	renderTestResult,
+} from "../src/ast-grep/render.js";
+import type {
+	AstGrepParseDetails,
+	AstGrepReplaceDetails,
+	AstGrepSearchDetails,
+	AstGrepTestDetails,
+} from "../src/ast-grep/tools.js";
 import { makeCliMatch } from "./helpers/sg-fixtures.js";
 
 const ANSI_PATTERN = /\u001b\[[0-9;]*m/g;
@@ -145,6 +155,32 @@ function makeParseDetails(overrides: Partial<AstGrepParseDetails> = {}): AstGrep
 			"  function_declaration (0,0)-(0,27)",
 			"    name: identifier (0,9)-(0,14)",
 		].join("\n"),
+		...overrides,
+	};
+}
+
+function makeTestDetails(overrides: Partial<AstGrepTestDetails> = {}): AstGrepTestDetails {
+	const matches = [
+		makeCliMatch({
+			file: "STDIN",
+			lines: 'console.log("hi")',
+			text: 'console.log("hi")',
+			range: {
+				byteOffset: { start: 0, end: 17 },
+				start: { line: 0, column: 0 },
+				end: { line: 0, column: 17 },
+			},
+		}),
+	];
+
+	return {
+		mode: "pattern",
+		codeLineCount: 1,
+		lang: "typescript",
+		pattern: "console.log($MSG)",
+		matches,
+		totalMatches: matches.length,
+		truncated: false,
 		...overrides,
 	};
 }
@@ -309,5 +345,62 @@ describe("renderParseResult", () => {
 
 		// then
 		expect(output).toContain("Error: bad pattern");
+	});
+});
+
+describe("renderTestResult", () => {
+	it("#given test matches #when collapsed #then shows example-code summary and preview", () => {
+		// given
+		const details = makeTestDetails();
+		const result: AgentToolResult<AstGrepTestDetails> = {
+			content: [{ type: "text", text: "" }],
+			details,
+		};
+
+		// when
+		const output = renderText(
+			renderTestResult(result, { expanded: false, isPartial: false }, testTheme, { lastComponent: undefined }),
+		);
+
+		// then
+		expect(output).toContain("1 match");
+		expect(output).toContain("example code");
+		expect(output).toContain("pattern");
+		expect(output).toContain('console.log("hi")');
+	});
+
+	it("#given no match test result with hint #when rendering #then keeps hint visible", () => {
+		// given
+		const details = makeTestDetails({ matches: [], totalMatches: 0, hint: "use $VAR" });
+		const result: AgentToolResult<AstGrepTestDetails> = {
+			content: [{ type: "text", text: "" }],
+			details,
+		};
+
+		// when
+		const output = renderText(
+			renderTestResult(result, { expanded: false, isPartial: false }, testTheme, { lastComponent: undefined }),
+		);
+
+		// then
+		expect(output).toContain("No matches found in example code");
+		expect(output).toContain("use $VAR");
+	});
+
+	it("#given test error #when rendering #then keeps the failure visible", () => {
+		// given
+		const details = makeTestDetails({ matches: [], totalMatches: 0, error: "invalid rule" });
+		const result: AgentToolResult<AstGrepTestDetails> = {
+			content: [{ type: "text", text: "" }],
+			details,
+		};
+
+		// when
+		const output = renderText(
+			renderTestResult(result, { expanded: false, isPartial: false }, testTheme, { lastComponent: undefined }),
+		);
+
+		// then
+		expect(output).toContain("Error: invalid rule");
 	});
 });

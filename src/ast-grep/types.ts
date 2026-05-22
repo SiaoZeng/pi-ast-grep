@@ -8,6 +8,9 @@ export type DebugQueryFormat = (typeof DEBUG_QUERY_FORMATS)[number];
 export const SG_STRICTNESS_LEVELS = ["cst", "smart", "ast", "relaxed", "signature", "template"] as const;
 export type SgStrictness = (typeof SG_STRICTNESS_LEVELS)[number];
 
+export const AST_GREP_TEST_MODES = ["pattern", "rule"] as const;
+export type AstGrepTestMode = (typeof AST_GREP_TEST_MODES)[number];
+
 export interface Position {
 	line: number;
 	column: number;
@@ -60,4 +63,16 @@ export interface RunSgDebugQueryOptions {
 export interface SgDebugQueryResult {
 	output: string;
 	error?: string;
+}
+
+export interface RunSgTestPatternOptions {
+	code: string;
+	pattern: string;
+	lang: CliLanguage;
+}
+
+export interface RunSgTestRuleOptions {
+	code: string;
+	rule: string;
+	lang: CliLanguage;
 }

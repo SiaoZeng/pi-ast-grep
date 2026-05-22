@@ -7,7 +7,14 @@ import { SearchTimeoutError } from "./errors.js";
 import { createSgResultFromStdout } from "./json-output.js";
 import { DEFAULT_TIMEOUT_MS } from "./languages.js";
 import { collectProcessOutputWithTimeout } from "./process-timeout.js";
-import type { RunSgDebugQueryOptions, RunSgOptions, SgDebugQueryResult, SgResult } from "./types.js";
+import type {
+	RunSgDebugQueryOptions,
+	RunSgOptions,
+	RunSgTestPatternOptions,
+	RunSgTestRuleOptions,
+	SgDebugQueryResult,
+	SgResult,
+} from "./types.js";
 
 const INSTALL_HINT = [
 	"ast-grep (sg) binary not found.",
@@ -77,6 +84,14 @@ export function buildSgDebugQueryArgs(options: RunSgDebugQueryOptions): string[]
 	}
 
 	return args;
+}
+
+export function buildSgTestPatternArgs(options: RunSgTestPatternOptions): string[] {
+	return ["run", "-p", options.pattern, "--lang", options.lang, "--stdin", "--json=compact"];
+}
+
+export function buildSgTestRuleArgs(options: RunSgTestRuleOptions): string[] {
+	return ["scan", "--inline-rules", options.rule, "--stdin", "--json=compact"];
 }
 
 async function spawnSg(cliPath: string, args: string[], timeoutMs: number, stdinText?: string) {
@@ -233,6 +248,74 @@ export async function runSgDebugQuery(
 		const errorMessage = error instanceof Error ? error.message : String(error);
 		return { output: "", error: `Failed to spawn ast-grep: ${errorMessage}` };
 	}
+}
+
+async function runSgJsonWithStdin(args: string[], code: string, hasRetriedDownload = false): Promise<SgResult> {
+	const cliPath = await resolveCliPath();
+	if (!cliPath) {
+		return {
+			matches: [],
+			totalMatches: 0,
+			truncated: false,
+			error: INSTALL_HINT,
+		};
+	}
+
+	try {
+		const output = await spawnSg(cliPath, args, DEFAULT_TIMEOUT_MS, code);
+		const stdout = output.stdout.trim();
+		const stderr = output.stderr.trim();
+		if (output.exitCode !== 0 && stdout.length === 0) {
+			return {
+				matches: [],
+				totalMatches: 0,
+				truncated: false,
+				error: stderr || `ast-grep exited with code ${output.exitCode}`,
+			};
+		}
+		const result = createSgResultFromStdout(stdout);
+		if (output.exitCode !== 0 && result.error === undefined) {
+			result.error = stderr || `ast-grep exited with code ${output.exitCode}`;
+		}
+		return result;
+	} catch (error) {
+		if (error instanceof SearchTimeoutError) {
+			return {
+				matches: [],
+				totalMatches: 0,
+				truncated: true,
+				truncatedReason: "timeout",
+				error: error.message,
+			};
+		}
+		if (isEnoentError(error)) {
+			const downloadedPath = await ensureAstGrepBinary();
+			if (downloadedPath && !hasRetriedDownload) {
+				return runSgJsonWithStdin(args, code, true);
+			}
+			return {
+				matches: [],
+				totalMatches: 0,
+				truncated: false,
+				error: AUTO_DOWNLOAD_FAILED_HINT,
+			};
+		}
+		const errorMessage = error instanceof Error ? error.message : String(error);
+		return {
+			matches: [],
+			totalMatches: 0,
+			truncated: false,
+			error: `Failed to spawn ast-grep: ${errorMessage}`,
+		};
+	}
+}
+
+export async function runSgTestPattern(options: RunSgTestPatternOptions): Promise<SgResult> {
+	return runSgJsonWithStdin(buildSgTestPatternArgs(options), options.code);
+}
+
+export async function runSgTestRule(options: RunSgTestRuleOptions): Promise<SgResult> {
+	return runSgJsonWithStdin(buildSgTestRuleArgs(options), options.code);
 }
 
 export { AUTO_DOWNLOAD_FAILED_HINT, INSTALL_HINT };

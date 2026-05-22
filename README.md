@@ -69,9 +69,23 @@ cd ~/.pi/agent/extensions/pi-ast-grep && npm install
 pi -e /path/to/pi-ast-grep/src/index.ts
 ```
 
-After installation, restart pi (or run `/reload` inside an interactive session). All three tools register automatically and become callable by the LLM.
+After installation, restart pi (or run `/reload` inside an interactive session). All four tools register automatically and become callable by the LLM.
 
 ## Tools
+
+### `ast_grep_test`
+
+Validate a structural query against explicit example code before running broader repository searches.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `mode` | `"pattern" | "rule"` (required) | Choose simple pattern validation or inline YAML rule validation. |
+| `code` | `string` (required) | Example source code to validate against. |
+| `lang` | one of `CLI_LANGUAGES` (required) | Target language for example code and pattern mode. |
+| `pattern` | `string` (optional, required when `mode="pattern"`) | AST pattern to validate. |
+| `rule` | `string` (optional, required when `mode="rule"`) | Inline YAML ast-grep rule to validate. |
+
+Use this after `ast_gparse` when the model wants to confirm a pattern or rule against a small example before calling repository-wide tools.
 
 ### `ast_gparse`
 

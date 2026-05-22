@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { findSgCliPathSync } from "../src/ast-grep/binary-path.js";
-import { runSg, runSgDebugQuery } from "../src/ast-grep/cli.js";
+import { runSg, runSgDebugQuery, runSgTestPattern, runSgTestRule } from "../src/ast-grep/cli.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -169,5 +169,84 @@ describe("sg binary integration", () => {
 		expect(result.output).toContain("Debug AST:");
 		expect(result.output).toContain("function_declaration");
 		expect(result.output).not.toContain("sample.ts:");
+	}, 15_000);
+
+	it("#given example code and a simple pattern #when ast_grep_test pattern helper runs #then it returns stdin-backed match results", async () => {
+		// given
+		const path = findSgCliPathSync();
+		if (!path) {
+			expect.fail("sg binary unavailable; integration test cannot run");
+		}
+
+		// when
+		const result = await runSgTestPattern({
+			code: 'console.log("hi")\n',
+			pattern: "console.log($MSG)",
+			lang: "typescript",
+		});
+
+		// then
+		expect(result.error).toBeUndefined();
+		expect(result.matches.length).toBe(1);
+		expect(result.matches[0]?.file).toBe("STDIN");
+	}, 15_000);
+
+	it("#given example code and an inline rule #when ast_grep_test rule helper runs #then it returns stdin-backed match results", async () => {
+		// given
+		const path = findSgCliPathSync();
+		if (!path) {
+			expect.fail("sg binary unavailable; integration test cannot run");
+		}
+		const rule = [
+			"id: find-await-in-loop",
+			"language: typescript",
+			"rule:",
+			"  pattern: await $PROMISE",
+			"  inside:",
+			"    any:",
+			"      - kind: for_statement",
+			"      - kind: while_statement",
+			"    stopBy: end",
+		].join("\n");
+
+		// when
+		const result = await runSgTestRule({
+			code: "while (foo) { await bar() }\n",
+			rule,
+			lang: "typescript",
+		});
+
+		// then
+		expect(result.error).toBeUndefined();
+		expect(result.matches.length).toBe(1);
+		expect(result.matches[0]?.file).toBe("STDIN");
+	}, 15_000);
+
+	it("#given malformed inline rule text #when ast_grep_test rule helper runs #then it surfaces the parse error", async () => {
+		// given
+		const path = findSgCliPathSync();
+		if (!path) {
+			expect.fail("sg binary unavailable; integration test cannot run");
+		}
+		const rule = [
+			"id: broken-rule",
+			"language: typescript",
+			"rule:",
+			"  all:",
+			"    - kind: function_declaration",
+			"    - has:",
+			"        pattern await $EXPR",
+		].join("\n");
+
+		// when
+		const result = await runSgTestRule({
+			code: "async function x(){ await y() }\n",
+			rule,
+			lang: "typescript",
+		});
+
+		// then
+		expect(result.error).toContain("Cannot parse rule INLINE_RULES");
+		expect(result.matches).toHaveLength(0);
 	}, 15_000);
 });

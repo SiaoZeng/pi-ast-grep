@@ -1,8 +1,15 @@
 import type { AgentToolResult, Theme, ToolRenderResultOptions } from "@earendil-works/pi-coding-agent";
 import { type Component, Text, truncateToWidth } from "@earendil-works/pi-tui";
 
-import type { AstGrepParseDetails, AstGrepReplaceDetails, AstGrepSearchDetails } from "./tools.js";
-import type { CliLanguage, CliMatch, DebugQueryFormat, SgStrictness, SgTruncationReason } from "./types.js";
+import type { AstGrepParseDetails, AstGrepReplaceDetails, AstGrepSearchDetails, AstGrepTestDetails } from "./tools.js";
+import type {
+	AstGrepTestMode,
+	CliLanguage,
+	CliMatch,
+	DebugQueryFormat,
+	SgStrictness,
+	SgTruncationReason,
+} from "./types.js";
 
 interface RenderContext {
 	lastComponent: Component | undefined;
@@ -32,6 +39,14 @@ interface AstGrepParseCallArgs {
 	format?: string;
 	selector?: string;
 	strictness?: string;
+}
+
+interface AstGrepTestCallArgs {
+	mode?: string;
+	code?: string;
+	lang?: string;
+	pattern?: string;
+	rule?: string;
 }
 
 interface MatchGroup {
@@ -108,6 +123,10 @@ function isStrictness(value: unknown): value is SgStrictness {
 		value === "signature" ||
 		value === "template"
 	);
+}
+
+function isTestMode(value: unknown): value is AstGrepTestMode {
+	return value === "pattern" || value === "rule";
 }
 
 function isTruncationReason(value: unknown): value is SgTruncationReason {
@@ -201,6 +220,25 @@ function getParseCallArgs(args: unknown): AstGrepParseCallArgs | undefined {
 	return result;
 }
 
+function getTestCallArgs(args: unknown): AstGrepTestCallArgs | undefined {
+	if (!isRecord(args)) {
+		return undefined;
+	}
+
+	const result: AstGrepTestCallArgs = {};
+	const mode = readString(args, "mode");
+	const code = readString(args, "code");
+	const lang = readString(args, "lang");
+	const pattern = readString(args, "pattern");
+	const rule = readString(args, "rule");
+	if (mode !== undefined) result.mode = mode;
+	if (code !== undefined) result.code = code;
+	if (lang !== undefined) result.lang = lang;
+	if (pattern !== undefined) result.pattern = pattern;
+	if (rule !== undefined) result.rule = rule;
+	return result;
+}
+
 function isSearchDetails(value: unknown): value is AstGrepSearchDetails {
 	if (!isRecord(value)) {
 		return false;
@@ -261,6 +299,31 @@ function isParseDetails(value: unknown): value is AstGrepParseDetails {
 		(error === undefined || typeof error === "string") &&
 		(selector === undefined || typeof selector === "string") &&
 		(strictness === undefined || isStrictness(strictness))
+	);
+}
+
+function isTestDetails(value: unknown): value is AstGrepTestDetails {
+	if (!isRecord(value)) {
+		return false;
+	}
+
+	const truncatedReason = value["truncatedReason"];
+	const error = value["error"];
+	const hint = value["hint"];
+	const pattern = value["pattern"];
+	const rule = value["rule"];
+	return (
+		isTestMode(value["mode"]) &&
+		typeof value["codeLineCount"] === "number" &&
+		isCliLanguage(value["lang"]) &&
+		(pattern === undefined || typeof pattern === "string") &&
+		(rule === undefined || typeof rule === "string") &&
+		isCliMatchArray(value["matches"]) &&
+		typeof value["totalMatches"] === "number" &&
+		typeof value["truncated"] === "boolean" &&
+		(truncatedReason === undefined || isTruncationReason(truncatedReason)) &&
+		(error === undefined || typeof error === "string") &&
+		(hint === undefined || typeof hint === "string")
 	);
 }
 
@@ -349,6 +412,21 @@ function formatParseBadges(args: AstGrepParseCallArgs | undefined, theme: Theme)
 	}
 	if (args?.strictness) {
 		badges += theme.fg("dim", ` [strictness ${args.strictness}]`);
+	}
+	return badges;
+}
+
+function formatTestBadges(args: AstGrepTestCallArgs | undefined, theme: Theme): string {
+	let badges = "";
+	if (args?.mode) {
+		badges += theme.fg("dim", ` [${args.mode}]`);
+	}
+	if (args?.lang) {
+		badges += theme.fg("dim", ` [${args.lang}]`);
+	}
+	if (args?.code) {
+		const lineCount = args.code.length === 0 ? 0 : args.code.split("\n").length;
+		badges += theme.fg("dim", ` [${lineCount} lines]`);
 	}
 	return badges;
 }
@@ -600,6 +678,67 @@ function formatParseResultText(
 	return `${summary}${formatExpandedParseOutput(details.output, theme)}`;
 }
 
+function formatCollapsedTestMatches(matches: CliMatch[], totalMatches: number, theme: Theme): string {
+	const lines: string[] = [];
+	for (const match of matches.slice(0, MAX_COLLAPSED_FILES)) {
+		lines.push(
+			theme.fg(
+				"muted",
+				`  ${formatPosition(match)}  ${truncateToWidth(formatMatchLine(match), MAX_SNIPPET_LENGTH)}`,
+			),
+		);
+	}
+	if (totalMatches > MAX_COLLAPSED_FILES) {
+		lines.push(theme.fg("dim", `  … ${totalMatches - MAX_COLLAPSED_FILES} more matches`));
+	}
+	return lines.length > 0 ? `\n${lines.join("\n")}` : "";
+}
+
+function formatExpandedTestMatches(matches: CliMatch[], totalMatches: number, theme: Theme): string {
+	const lines: string[] = [];
+	for (const match of matches.slice(0, MAX_EXPANDED_MATCHES)) {
+		lines.push(
+			`${theme.fg("muted", formatPosition(match))}  ${theme.fg("toolOutput", truncateToWidth(formatMatchLine(match), MAX_SNIPPET_LENGTH))}`,
+		);
+	}
+	if (totalMatches > MAX_EXPANDED_MATCHES) {
+		lines.push(theme.fg("dim", `… ${totalMatches - MAX_EXPANDED_MATCHES} more matches not shown`));
+	}
+	return lines.length > 0 ? `\n\n${lines.join("\n")}` : "";
+}
+
+function formatTestResultText(
+	result: AgentToolResult<unknown>,
+	options: ToolRenderResultOptions,
+	theme: Theme,
+	isError: boolean | undefined,
+): string {
+	const details = isTestDetails(result.details) ? result.details : undefined;
+	if (!details) {
+		return formatFallbackResult(result, theme, isError);
+	}
+
+	if (details.error) {
+		return theme.fg("error", `Error: ${truncateMessage(details.error)}`);
+	}
+
+	if (details.totalMatches === 0) {
+		let text = theme.fg("dim", "No matches found in example code");
+		if (details.hint) {
+			text += `\n${theme.fg("muted", details.hint)}`;
+		}
+		return text;
+	}
+
+	const summary =
+		theme.fg("success", pluralize(details.totalMatches, "match", "matches")) +
+		theme.fg("muted", ` • example code • ${details.mode}`);
+	if (!options.expanded) {
+		return `${summary}${formatTruncationSuffix(details, theme)}${formatCollapsedTestMatches(details.matches, details.totalMatches, theme)}`;
+	}
+	return `${summary}${formatTruncationBanner(details, theme)}${formatExpandedTestMatches(details.matches, details.totalMatches, theme)}`;
+}
+
 export function renderSearchCall(args: unknown, theme: Theme, context: RenderContext): Text {
 	const text = reuseText(context);
 	const callArgs = getSearchCallArgs(args);
@@ -673,5 +812,28 @@ export function renderParseResult(
 ): Text {
 	const text = reuseText(context);
 	text.setText(formatParseResultText(result, options, theme, context.isError));
+	return text;
+}
+
+export function renderTestCall(args: unknown, theme: Theme, context: RenderContext): Text {
+	const text = reuseText(context);
+	const callArgs = getTestCallArgs(args);
+	const label = callArgs?.mode === "rule" ? "<inline rule>" : `/${callArgs?.pattern ?? ""}/`;
+	text.setText(
+		theme.fg("toolTitle", theme.bold("ast_grep_test ")) +
+			theme.fg("accent", label) +
+			formatTestBadges(callArgs, theme),
+	);
+	return text;
+}
+
+export function renderTestResult(
+	result: AgentToolResult<unknown>,
+	options: ToolRenderResultOptions,
+	theme: Theme,
+	context: RenderContext,
+): Text {
+	const text = reuseText(context);
+	text.setText(formatTestResultText(result, options, theme, context.isError));
 	return text;
 }
